@@ -38,8 +38,10 @@ export default function RootLayout() {
       // Not logged in but trying to access protected tabs → redirect to login
       router.replace('/login');
     } else if (session && onAuthScreen) {
-      // Logged in but on a login/signup screen → redirect to tabs
-      router.replace('/(tabs)');
+      // Let a freshly created account finish its own registration transition.
+      if (segments[0] === 'signup' && session.user.user_metadata?.pass_setup_pending) return;
+      // New accounts finish pass setup after their first successful sign-in.
+      router.replace(session.user.user_metadata?.pass_setup_pending ? '/pass-activation' : '/(tabs)');
     }
   }, [session, segments, isReady]);
 
@@ -59,7 +61,7 @@ export default function RootLayout() {
       <Stack.Screen name="otp" options={{ headerShown: false }} />
       <Stack.Screen name="sign-up-loading" options={{ headerShown: false }} />
       <Stack.Screen name="pass-activation" options={{ title: 'Activate Smart Pass' }} />
-      <Stack.Screen name="provisioning" options={{ title: 'Provisioning' }} />
+      <Stack.Screen name="conductor" options={{ title: 'Conductor GPS' }} />
       <Stack.Screen name="loading-sync" options={{ headerShown: false }} />
       <Stack.Screen name="LiveMapScreen" options={{ title: 'Live Map Detail' }} />
       <Stack.Screen name="interactive-route-map" options={{ title: 'Route Map' }} />

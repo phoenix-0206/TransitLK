@@ -1,14 +1,59 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, SafeAreaView } from 'react-native';
 import { Ionicons, FontAwesome, MaterialIcons } from '@expo/vector-icons';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
+import { supabase } from '../services/supabase';
 
 export default function LoginScreen() {
+  const { notice } = useLocalSearchParams<{ notice?: string }>();
   const [loginMethod, setLoginMethod] = useState<'password' | 'otp'>('password');
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+
+  function normalizePhoneNumber(value: string) {
+    const digits = value.replace(/\D/g, '');
+    if (value.trim().startsWith('+')) return `+${digits}`;
+    if (digits.startsWith('00')) return `+${digits.slice(2)}`;
+    if (digits.startsWith('0')) return `+94${digits.slice(1)}`;
+    if (digits.startsWith('94')) return `+${digits}`;
+    return `+94${digits}`;
+  }
+
+  async function handleLogin() {
+    const value = identifier.trim();
+    if (!value || (loginMethod === 'password' && !password)) {
+      setErrorMessage(loginMethod === 'password' ? 'Enter your email or phone number and password.' : 'Enter your mobile number to receive a PIN.');
+      return;
+    }
+
+    setSubmitting(true);
+    setErrorMessage('');
+    try {
+      if (loginMethod === 'password') {
+        if (!value.includes('@')) {
+          setErrorMessage('Use your account email for password login. To sign in with a mobile number, choose One-Time PIN.');
+          return;
+        }
+        const credentials = { email: value.toLowerCase(), password };
+        const { data, error } = await supabase.auth.signInWithPassword(credentials);
+        if (error) throw error;
+        router.replace(data.session?.user.user_metadata?.pass_setup_pending ? '/pass-activation' : '/(tabs)');
+      } else {
+        const phone = normalizePhoneNumber(value);
+        const { error } = await supabase.auth.signInWithOtp({ phone, options: { shouldCreateUser: false } });
+        if (error) throw error;
+        router.push({ pathname: '/otp', params: { phone, flow: 'login' } });
+      }
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Unable to sign in. Please try again.');
+    } finally {
+      setSubmitting(false);
+    }
+  }
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -69,17 +114,17 @@ export default function LoginScreen() {
         </View>
 
         {/* Input Form */}
-        <Text style={styles.inputLabel}>Mobile Number or Email</Text>
+        <Text style={styles.inputLabel}>{loginMethod === 'password' ? 'Account Email' : 'Mobile Number'}</Text>
         <View style={styles.inputWrapper}>
-          <View style={styles.flagBox}>
-            <Text style={styles.flagText}>[LK] +94</Text>
-          </View>
+          {loginMethod === 'otp' && <View style={styles.flagBox}><Text style={styles.flagText}>[LK] +94</Text></View>}
           <TextInput
             style={styles.textInput}
-            placeholder="07X XXX XXXX or commuter@email.com"
+            placeholder={loginMethod === 'password' ? 'name@example.com' : '07X XXX XXXX'}
             placeholderTextColor="#A0AEC0"
             value={identifier}
             onChangeText={setIdentifier}
+            autoCapitalize="none"
+            keyboardType={loginMethod === 'otp' ? 'phone-pad' : 'email-address'}
           />
           <MaterialIcons name="badge" size={20} color="#A0AEC0" />
         </View>
@@ -119,9 +164,11 @@ export default function LoginScreen() {
         )}
 
         {/* Action Button */}
-        <TouchableOpacity style={styles.primaryBtn} onPress={() => router.push('/otp')}>
-          <Text style={styles.primaryBtnText}>Log In</Text>
-          <Ionicons name="arrow-forward" size={18} color="#FFF" />
+        {!!errorMessage && <Text accessibilityRole="alert" style={styles.errorText}>{errorMessage}</Text>}
+        {!!notice && <Text style={styles.noticeText}>{notice}</Text>}
+        <TouchableOpacity style={styles.primaryBtn} onPress={handleLogin} disabled={submitting}>
+          <Text style={styles.primaryBtnText}>{submitting ? 'Please wait...' : loginMethod === 'otp' ? 'Send One-Time PIN' : 'Log In'}</Text>
+          {!submitting && <Ionicons name="arrow-forward" size={18} color="#FFF" />}
         </TouchableOpacity>
 
         {/* OTP Option Promo Box */}
@@ -133,7 +180,7 @@ export default function LoginScreen() {
             <Text style={styles.otpPromoTitle}>📲 Log In with Phone OTP</Text>
             <Text style={styles.otpPromoSub}>Fast login via SMS code without password</Text>
           </View>
-          <TouchableOpacity style={styles.tryOtpBtn} onPress={() => router.push('/otp')}>
+          <TouchableOpacity style={styles.tryOtpBtn} onPress={() => setLoginMethod('otp')}>
             <Text style={styles.tryOtpText}>Try OTP</Text>
           </TouchableOpacity>
         </View>
@@ -211,6 +258,8 @@ const styles = StyleSheet.create({
   forgotText: { fontSize: 13, fontWeight: 'bold', color: '#002060' },
   primaryBtn: { backgroundColor: '#002060', height: 50, borderRadius: 10, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 8 },
   primaryBtnText: { color: '#FFF', fontWeight: 'bold', fontSize: 16 },
+  errorText: { color: '#B91C1C', fontSize: 12, marginTop: 8, marginBottom: 4 },
+  noticeText: { color: '#0F766E', fontSize: 12, marginTop: 8, marginBottom: 4 },
   otpPromoCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#CCFBF1', borderRadius: 10, padding: 12, marginTop: 14 },
   otpIconCircle: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#FFF', justifyContent: 'center', alignItems: 'center' },
   otpPromoTitle: { fontWeight: 'bold', fontSize: 13, color: '#0F766E' },

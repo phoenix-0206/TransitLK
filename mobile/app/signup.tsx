@@ -13,43 +13,71 @@ export default function SignUpScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [agreeTerms, setAgreeTerms] = useState(false);
   const [receiveAlerts, setReceiveAlerts] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
 
   async function handleCreateAccount() {
-  try {
-    // 1. Create Auth User
-    const { data: authData, error: authError } = await supabase.auth.signUp({
-      email: email.trim(),
-      password: password,
-      options: {
-        data: {
-          full_name: fullName,
-          phone_number: mobileNumber,
-        },
-      },
-    });
-
-    if (authError) throw authError;
-
-    // 2. Insert Profile Data into public.profiles
-    if (authData.user) {
-      const { error: profileError } = await supabase.from('profiles').insert([
-        {
-          id: authData.user.id,
-          full_name: fullName,
-          phone_number: mobileNumber,
-          pass_category: 'regular',
-        },
-      ]);
-
-      if (profileError) throw profileError;
+    if (!fullName.trim() || !mobileNumber.trim() || !email.trim() || !password) {
+      setErrorMessage('Complete your name, mobile number, email, and password to continue.');
+      return;
+    }
+    if (!/^\S+@\S+\.\S+$/.test(email.trim())) {
+      setErrorMessage('Enter a valid email address.');
+      return;
+    }
+    if (password.length < 8 || !/\d/.test(password)) {
+      setErrorMessage('Use a password with at least 8 characters and one number.');
+      return;
+    }
+    if (password !== confirmPassword) {
+      setErrorMessage('The passwords do not match.');
+      return;
+    }
+    if (!agreeTerms) {
+      setErrorMessage('Agree to the Terms & Conditions to create an account.');
+      return;
     }
 
-    // 3. Navigate on success
-    router.push('/sign-up-loading');
-  } catch (error: any) {
-    alert(error.message || 'Failed to create account');
+    setSubmitting(true);
+    setErrorMessage('');
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email: email.trim().toLowerCase(),
+        password,
+        options: {
+          data: {
+            full_name: fullName.trim(),
+            phone_number: mobileNumber.trim(),
+            pass_setup_pending: true,
+          },
+        },
+      });
+      if (error) throw error;
+      if (!data.user) throw new Error('Account creation did not complete. Please try again.');
+
+      // The database trigger creates the profile. Update its phone when sign-up
+      // returns a session; never insert a duplicate row or unsupported columns.
+      if (data.session) {
+        const { error: profileError } = await supabase
+          .from('profiles')
+          .update({ phone_number: mobileNumber.trim() })
+          .eq('id', data.user.id);
+        if (profileError) throw profileError;
+      } else {
+        router.replace({
+          pathname: '/login',
+          params: { notice: 'Account created. Confirm your email, then sign in to continue to Smart Pass setup.' },
+        });
+        return;
+      }
+
+      router.replace('/sign-up-loading');
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Failed to create account.');
+    } finally {
+      setSubmitting(false);
+    }
   }
-}
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -144,12 +172,12 @@ export default function SignUpScreen() {
 
         <View style={styles.labelRow}>
           <Text style={styles.inputLabel}>✉️ Email Address</Text>
-          <Text style={styles.optionalTag}>Optional</Text>
+          <Text style={styles.optionalTag}>Required</Text>
         </View>
         <View style={styles.inputWrapper}>
           <TextInput
             style={styles.textInput}
-            placeholder="commuter@transit.lk or name@gmail.com"
+            placeholder="name@example.com"
             placeholderTextColor="#A0AEC0"
             keyboardType="email-address"
             autoCapitalize="none"
@@ -225,19 +253,20 @@ export default function SignUpScreen() {
         </TouchableOpacity>
 
         {/* Main Sign Up Action */}
-        <TouchableOpacity style={styles.primaryBtn} onPress={handleCreateAccount}>
-          <Text style={styles.primaryBtnText}>Activate Account</Text>
-          <Ionicons name="arrow-forward" size={18} color="#FFF" />
+        {!!errorMessage && <Text accessibilityRole="alert" style={styles.errorText}>{errorMessage}</Text>}
+        <TouchableOpacity style={styles.primaryBtn} onPress={handleCreateAccount} disabled={submitting}>
+          <Text style={styles.primaryBtnText}>{submitting ? 'Creating account...' : 'Create Account & Continue'}</Text>
+          {!submitting && <Ionicons name="arrow-forward" size={18} color="#FFF" />}
         </TouchableOpacity>
 
         {/* Express SMS Option Card */}
-        <TouchableOpacity style={styles.expressCard} onPress={() => router.push('/otp')}>
+        <TouchableOpacity style={styles.expressCard} onPress={() => router.push('/login')}>
           <View style={styles.expressIconBox}>
             <Ionicons name="flash-outline" size={20} color="#0D9488" />
           </View>
           <View style={{ flex: 1, marginLeft: 10 }}>
-            <Text style={styles.expressTitle}>Need instant sign-up?</Text>
-            <Text style={styles.expressSub}>Tap for Express SMS OTP Registration</Text>
+            <Text style={styles.expressTitle}>Already have an account?</Text>
+            <Text style={styles.expressSub}>Sign in with your password or request a phone OTP.</Text>
           </View>
           <Ionicons name="chevron-forward" size={18} color="#0D9488" />
         </TouchableOpacity>
@@ -325,6 +354,7 @@ const styles = StyleSheet.create({
   linkText: { color: '#002060', fontWeight: 'bold' },
   primaryBtn: { backgroundColor: '#002060', height: 50, borderRadius: 10, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 8, marginTop: 20 },
   primaryBtnText: { color: '#FFF', fontWeight: 'bold', fontSize: 16 },
+  errorText: { color: '#B91C1C', fontSize: 12, marginTop: 8 },
   expressCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#CCFBF1', padding: 12, borderRadius: 10, marginTop: 12 },
   expressIconBox: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#FFF', justifyContent: 'center', alignItems: 'center' },
   expressTitle: { fontWeight: 'bold', fontSize: 13, color: '#0F766E' },

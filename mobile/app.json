@@ -33,6 +33,12 @@
           "resizeMode": "contain",
           "backgroundColor": "#ffffff"
         }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Allow TransitLK to share this conductor phone's location with passengers while GPS sharing is enabled."
+        }
       ]
     ],
     "experiments": {

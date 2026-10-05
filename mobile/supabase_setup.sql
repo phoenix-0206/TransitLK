@@ -143,6 +143,87 @@ INSERT INTO public.bus_locations (bus_number, route_name, latitude, longitude, e
   ('400',  'Negombo - Colombo',     7.0900, 79.8600, 25, 'Low')
 ON CONFLICT DO NOTHING;
 
+-- ─────────────────────────────────────────────────────
+-- 6. CONDUCTOR-REGISTERED BUSES AND LIVE PHONE GPS
+-- Apply this updated setup script in the Supabase SQL Editor.
+-- ─────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS public.conductor_buses (
+  id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  owner_id              UUID NOT NULL DEFAULT auth.uid() REFERENCES auth.users(id) ON DELETE CASCADE,
+  bus_number            TEXT NOT NULL,
+  vehicle_registration  TEXT NOT NULL,
+  route_name            TEXT NOT NULL,
+  created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (owner_id, vehicle_registration)
+);
+
+ALTER TABLE public.conductor_buses ENABLE ROW LEVEL SECURITY;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.conductor_buses TO authenticated;
+
+DROP POLICY IF EXISTS "Conductors manage their own bus registrations" ON public.conductor_buses;
+CREATE POLICY "Conductors manage their own bus registrations"
+  ON public.conductor_buses FOR ALL TO authenticated
+  USING (auth.uid() = owner_id)
+  WITH CHECK (auth.uid() = owner_id);
+
+CREATE TABLE IF NOT EXISTS public.conductor_bus_locations (
+  bus_id                UUID PRIMARY KEY REFERENCES public.conductor_buses(id) ON DELETE CASCADE,
+  bus_number            TEXT NOT NULL,
+  vehicle_registration  TEXT NOT NULL,
+  route_name            TEXT NOT NULL,
+  latitude              DOUBLE PRECISION NOT NULL CHECK (latitude BETWEEN -90 AND 90),
+  longitude             DOUBLE PRECISION NOT NULL CHECK (longitude BETWEEN -180 AND 180),
+  accuracy_meters       DOUBLE PRECISION,
+  heading               DOUBLE PRECISION,
+  speed_mps             DOUBLE PRECISION,
+  updated_at            TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+ALTER TABLE public.conductor_bus_locations ENABLE ROW LEVEL SECURITY;
+GRANT SELECT ON public.conductor_bus_locations TO anon, authenticated;
+GRANT INSERT, UPDATE, DELETE ON public.conductor_bus_locations TO authenticated;
+
+DROP POLICY IF EXISTS "Active conductor bus locations are public" ON public.conductor_bus_locations;
+CREATE POLICY "Active conductor bus locations are public"
+  ON public.conductor_bus_locations FOR SELECT
+  USING (true);
+
+DROP POLICY IF EXISTS "Conductors publish locations for their own buses" ON public.conductor_bus_locations;
+CREATE POLICY "Conductors publish locations for their own buses"
+  ON public.conductor_bus_locations FOR INSERT TO authenticated
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM public.conductor_buses AS bus
+      WHERE bus.id = bus_id AND bus.owner_id = auth.uid()
+    )
+  );
+
+DROP POLICY IF EXISTS "Conductors update locations for their own buses" ON public.conductor_bus_locations;
+CREATE POLICY "Conductors update locations for their own buses"
+  ON public.conductor_bus_locations FOR UPDATE TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.conductor_buses AS bus
+      WHERE bus.id = bus_id AND bus.owner_id = auth.uid()
+    )
+  )
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM public.conductor_buses AS bus
+      WHERE bus.id = bus_id AND bus.owner_id = auth.uid()
+    )
+  );
+
+DROP POLICY IF EXISTS "Conductors stop sharing their own bus locations" ON public.conductor_bus_locations;
+CREATE POLICY "Conductors stop sharing their own bus locations"
+  ON public.conductor_bus_locations FOR DELETE TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.conductor_buses AS bus
+      WHERE bus.id = bus_id AND bus.owner_id = auth.uid()
+    )
+  );
+
 -- Bus Schedules (timetable mock data)
 INSERT INTO public.bus_schedules (route_number, origin, destination, departure_time, arrival_time, frequency, bus_type) VALUES
   ('138',  'Maharagama',   'Pettah',    '05:30 AM', '06:15 AM', 'Every 10 mins', 'Normal'),

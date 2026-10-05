@@ -1,68 +1,44 @@
-import React, { useState, useEffect } from 'react';
-import {
-  View, Text, StyleSheet, TextInput, TouchableOpacity,
-  Alert, ScrollView, ActivityIndicator,
-} from 'react-native';
-import { supabase } from '../services/supabase';
+import React, { useEffect, useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, SafeAreaView, ActivityIndicator } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import type { Profile } from '../types/database';
+import { supabase } from '../services/supabase';
 
 export default function ProfileScreen() {
-  const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [email, setEmail] = useState('');
-  const [fullName, setFullName] = useState('');
-  const [phone, setPhone] = useState('');
-  const [userId, setUserId] = useState('');
+  const [profile, setProfile] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    loadProfile();
+    fetchUserProfile();
   }, []);
 
-  async function loadProfile() {
-    setLoading(true);
-    const { data: { user } } = await supabase.auth.getUser();
+  async function fetchUserProfile() {
+    try {
+      setLoading(true);
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
 
-    if (user) {
-      setUserId(user.id);
-      setEmail(user.email ?? '');
+      if (authError || !user) {
+        router.replace('/login');
+        return;
+      }
 
-      const { data } = await supabase
+      // Fetch user profile details including the 'role' column
+      const { data, error } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', user.id)
-        .single<Profile>();
+        .single();
 
-      if (data) {
-        setFullName(data.full_name ?? '');
-        setPhone(data.phone_number ?? '');
-      }
+      if (error) throw error;
+      setProfile(data);
+    } catch (err: any) {
+      console.error('Error fetching profile:', err.message);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }
 
-  async function updateProfile() {
-    if (!userId) return;
-    setSaving(true);
-
-    const update: Partial<Profile> & { id: string } = {
-      id: userId,
-      full_name: fullName.trim() || null,
-      phone_number: phone.trim() || null,
-      updated_at: new Date().toISOString(),
-    };
-
-    const { error } = await supabase.from('profiles').upsert(update);
-
-    if (error) {
-      Alert.alert('Error', error.message);
-    } else {
-      Alert.alert('Saved!', 'Profile details updated successfully.');
-    }
-    setSaving(false);
-  }
-
-  async function handleSignOut() {
+  async function handleLogout() {
     await supabase.auth.signOut();
     router.replace('/login');
   }
@@ -76,104 +52,81 @@ export default function ProfileScreen() {
   }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 40 }}>
-      <Text style={styles.title}>Smart Pass & Profile</Text>
-
-      {/* Smart Pass Card */}
-      <View style={styles.passCard}>
-        <Text style={styles.passCardTitle}>TRANSITLK SMART PASS</Text>
-        <Text style={styles.passNumber}>
-          ID: {userId ? userId.substring(0, 12).toUpperCase() : '—'}
-        </Text>
-        <View style={styles.passFooter}>
-          <Text style={styles.passStatus}>● ACTIVE</Text>
-          <Text style={styles.passBalance}>Balance: LKR 1,250.00</Text>
+    <SafeAreaView style={styles.safeArea}>
+      <ScrollView contentContainerStyle={styles.container}>
+        {/* Profile Card */}
+        <View style={styles.profileCard}>
+          <View style={styles.avatarCircle}>
+            <Ionicons name="person" size={32} color="#FFF" />
+          </View>
+          <Text style={styles.userName}>{profile?.full_name || 'TransitLK Commuter'}</Text>
+          <Text style={styles.userPhone}>{profile?.phone_number || 'No phone linked'}</Text>
+          
+          <View style={styles.roleBadge}>
+            <Text style={styles.roleText}>
+              {(profile?.role || 'commuter').toUpperCase()}
+            </Text>
+          </View>
         </View>
-      </View>
 
-      {/* Profile Form */}
-      <View style={styles.formSection}>
-        <Text style={styles.sectionHeader}>Personal Details</Text>
+        {/* CONDITIONAL ADMIN BUTTON: Rendered only if role is admin */}
+        {profile?.role === 'admin' && (
+          <View style={styles.adminSection}>
+            <Text style={styles.sectionHeader}>ADMINISTRATOR PRIVILEGES</Text>
+            <TouchableOpacity 
+              style={styles.adminBtn} 
+              onPress={() => router.push('/admin')}
+            >
+              <View style={styles.adminBtnLeft}>
+                <Ionicons name="shield-checkmark" size={20} color="#FFF" />
+                <Text style={styles.adminBtnText}>Open Admin Control Panel</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color="#FFF" />
+            </TouchableOpacity>
+          </View>
+        )}
 
-        <Text style={styles.label}>Email Address</Text>
-        <TextInput
-          style={[styles.input, styles.inputDisabled]}
-          value={email}
-          editable={false}
-          selectTextOnFocus={false}
-        />
-
-        <Text style={styles.label}>Full Name</Text>
-        <TextInput
-          style={styles.input}
-          value={fullName}
-          onChangeText={setFullName}
-          placeholder="Enter your full name"
-          placeholderTextColor="#AAA"
-        />
-
-        <Text style={styles.label}>Phone Number</Text>
-        <TextInput
-          style={styles.input}
-          value={phone}
-          onChangeText={setPhone}
-          placeholder="+94 7X XXX XXXX"
-          placeholderTextColor="#AAA"
-          keyboardType="phone-pad"
-        />
-
-        <TouchableOpacity
-          style={[styles.updateBtn, saving && styles.btnDisabled]}
-          onPress={updateProfile}
-          disabled={saving}
-        >
-          <Text style={styles.updateBtnText}>{saving ? 'Saving...' : 'Update Details'}</Text>
+        {/* General Settings */}
+        <Text style={styles.sectionHeader}>ACCOUNT SETTINGS</Text>
+        
+        <TouchableOpacity style={styles.menuItem}>
+          <Ionicons name="card-outline" size={20} color="#002060" />
+          <Text style={styles.menuText}>Smart Pass Details</Text>
+          <Ionicons name="chevron-forward" size={18} color="#CBD5E1" />
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.logoutBtn} onPress={handleSignOut}>
-          <Text style={styles.logoutBtnText}>Log Out</Text>
+        <TouchableOpacity style={styles.menuItem}>
+          <Ionicons name="notifications-outline" size={20} color="#002060" />
+          <Text style={styles.menuText}>Notification Preferences</Text>
+          <Ionicons name="chevron-forward" size={18} color="#CBD5E1" />
         </TouchableOpacity>
-      </View>
-    </ScrollView>
+
+        <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
+          <Ionicons name="log-out-outline" size={20} color="#DC2626" />
+          <Text style={styles.logoutText}>Log Out</Text>
+        </TouchableOpacity>
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F5F5F7', padding: 20 },
+  safeArea: { flex: 1, backgroundColor: '#F8FAFC' },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  title: { fontSize: 24, fontWeight: 'bold', color: '#002060', marginTop: 10, marginBottom: 20 },
-  passCard: {
-    backgroundColor: '#002060', borderRadius: 16, padding: 22,
-    marginBottom: 24, elevation: 5,
-  },
-  passCardTitle: { color: '#FFC000', fontWeight: 'bold', fontSize: 13, letterSpacing: 1.5 },
-  passNumber: { color: '#FFF', fontSize: 20, fontWeight: 'bold', marginVertical: 16, letterSpacing: 1 },
-  passFooter: {
-    flexDirection: 'row', justifyContent: 'space-between',
-    borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.2)', paddingTop: 12,
-  },
-  passStatus: { color: '#4CD964', fontWeight: 'bold', fontSize: 13 },
-  passBalance: { color: '#FFF', fontWeight: '600', fontSize: 13 },
-  formSection: {
-    backgroundColor: '#FFF', padding: 18, borderRadius: 14,
-    borderWidth: 1, borderColor: '#E5E5EA', elevation: 1,
-  },
-  sectionHeader: { fontSize: 16, fontWeight: 'bold', color: '#002060', marginBottom: 18 },
-  label: { fontSize: 12, color: '#666', marginBottom: 5, fontWeight: '500' },
-  input: {
-    backgroundColor: '#F9F9F9', padding: 13, borderRadius: 10,
-    borderWidth: 1, borderColor: '#DDD', marginBottom: 16, fontSize: 15, color: '#333',
-  },
-  inputDisabled: { backgroundColor: '#EFEFEF', color: '#888' },
-  updateBtn: {
-    backgroundColor: '#002060', padding: 15, borderRadius: 10,
-    alignItems: 'center', marginTop: 4,
-  },
-  btnDisabled: { opacity: 0.6 },
-  updateBtnText: { color: '#FFF', fontWeight: 'bold', fontSize: 15 },
-  logoutBtn: {
-    backgroundColor: '#FF3B30', padding: 15, borderRadius: 10,
-    alignItems: 'center', marginTop: 12,
-  },
-  logoutBtnText: { color: '#FFF', fontWeight: 'bold', fontSize: 15 },
+  container: { padding: 16 },
+  profileCard: { backgroundColor: '#002060', borderRadius: 16, padding: 20, alignItems: 'center', marginBottom: 20 },
+  avatarCircle: { width: 64, height: 64, borderRadius: 32, backgroundColor: '#1E3A8A', justifyContent: 'center', alignItems: 'center', marginBottom: 10 },
+  userName: { fontSize: 18, fontWeight: 'bold', color: '#FFF' },
+  userPhone: { fontSize: 12, color: '#93C5FD', marginTop: 2 },
+  roleBadge: { backgroundColor: '#0D9488', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, marginTop: 10 },
+  roleText: { color: '#FFF', fontWeight: 'bold', fontSize: 10 },
+  adminSection: { marginBottom: 20 },
+  sectionHeader: { fontSize: 11, fontWeight: 'bold', color: '#64748B', marginBottom: 8, letterSpacing: 0.5 },
+  adminBtn: { backgroundColor: '#0D9488', padding: 14, borderRadius: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', elevation: 2 },
+  adminBtnLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  adminBtnText: { color: '#FFF', fontWeight: 'bold', fontSize: 14 },
+  menuItem: { backgroundColor: '#FFF', borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 10, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 8 },
+  menuText: { flex: 1, fontSize: 14, fontWeight: '600', color: '#0F172A' },
+  logoutBtn: { backgroundColor: '#FEE2E2', borderRadius: 10, padding: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 12 },
+  logoutText: { color: '#DC2626', fontWeight: 'bold', fontSize: 14 },
 });

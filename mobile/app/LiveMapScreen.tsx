@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, FlatList, Alert, ActivityIndicator } from 'react-native';
 import MapView, { Marker } from 'react-native-maps';
 import { supabase } from '../services/supabase';
@@ -8,32 +8,46 @@ export default function LiveMapScreen() {
   const [savedRoutes, setSavedRoutes] = useState<any[]>([]);
   const [selectedBus, setSelectedBus] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+  const mapRef = useRef<MapView>(null);
 
   useEffect(() => {
-    fetchBusLocations();
-    fetchSavedRoutes();
+    void fetchBusLocations();
+    void fetchSavedRoutes();
+    const timer = setInterval(() => void fetchBusLocations(), 8000);
+    return () => clearInterval(timer);
   }, []);
 
-  // CRUD Operation 1 (READ): Fetch live bus locations from Supabase
-  async function fetchBusLocations() {
-    setLoading(true);
-    const { data, error } = await supabase.from('bus_locations').select('*');
+  const fetchBusLocations = useCallback(async () => {
+    const { data, error } = await supabase
+      .from('conductor_bus_locations')
+      .select('bus_id, bus_number, vehicle_registration, route_name, latitude, longitude, accuracy_meters, updated_at')
+      .gte('updated_at', new Date(Date.now() - 2 * 60 * 1000).toISOString())
+      .order('updated_at', { ascending: false });
 
     if (error) {
-      // Sample data fallback if table is empty or offline
-      const sampleBuses = [
-        { id: '1', bus_number: '138', route_name: 'Maharagama - Pettah', latitude: 6.8480, longitude: 79.9265, eta_minutes: 4, crowding_level: 'Medium' },
-        { id: '2', bus_number: '120', route_name: 'Horana - Pettah', latitude: 6.8700, longitude: 79.8800, eta_minutes: 12, crowding_level: 'High' },
-        { id: '3', bus_number: '100', route_name: 'Panadura - Pettah', latitude: 6.8300, longitude: 79.8650, eta_minutes: 8, crowding_level: 'Low' },
-      ];
-      setBuses(sampleBuses);
-      setSelectedBus(sampleBuses[0]);
-    } else if (data && data.length > 0) {
-      setBuses(data);
-      setSelectedBus(data[0]);
+      setLoadError(error.message);
+      setBuses([]);
+      setSelectedBus(null);
+    } else {
+      setLoadError('');
+      const activeBuses = data ?? [];
+      setBuses(activeBuses);
+      setSelectedBus((current: any) => activeBuses.find((bus) => bus.bus_id === current?.bus_id) ?? activeBuses[0] ?? null);
     }
     setLoading(false);
-  }
+  }, []);
+
+  useEffect(() => {
+    if (selectedBus) {
+      mapRef.current?.animateToRegion({
+        latitude: selectedBus.latitude,
+        longitude: selectedBus.longitude,
+        latitudeDelta: 0.02,
+        longitudeDelta: 0.02,
+      }, 700);
+    }
+  }, [selectedBus?.bus_id, selectedBus?.latitude, selectedBus?.longitude]);
 
   // CRUD Operation 2 (READ): Fetch current user's saved routes
   async function fetchSavedRoutes() {
@@ -86,6 +100,7 @@ export default function LiveMapScreen() {
         </View>
       ) : (
         <MapView
+          ref={mapRef}
           style={styles.map}
           initialRegion={{
             latitude: selectedBus ? selectedBus.latitude : 6.8480,
@@ -96,10 +111,11 @@ export default function LiveMapScreen() {
         >
           {buses.map((bus) => (
             <Marker
-              key={bus.id}
+              key={bus.bus_id}
               coordinate={{ latitude: bus.latitude, longitude: bus.longitude }}
-              title={`Bus ${bus.bus_number}`}
-              description={`ETA: ${bus.eta_minutes} min`}
+              title={`Bus ${bus.bus_number} • ${bus.vehicle_registration}`}
+              description={`${bus.route_name} • Updated ${new Date(bus.updated_at).toLocaleTimeString()}`}
+              pinColor="#0D9488"
               onPress={() => setSelectedBus(bus)}
             />
           ))}
@@ -138,27 +154,15 @@ export default function LiveMapScreen() {
           </View>
 
           <View style={styles.etaContainer}>
-            <Text style={styles.etaLabel}>ESTIMATED TIME OF ARRIVAL</Text>
-            <Text style={styles.etaValue}>{selectedBus.eta_minutes} MINS</Text>
+            <Text style={styles.etaLabel}>LAST GPS UPDATE</Text>
+            <Text style={styles.etaValue}>{new Date(selectedBus.updated_at).toLocaleTimeString()}</Text>
           </View>
 
           <View style={styles.actionRow}>
             <View>
-              <Text style={styles.crowdingLabel}>Crowding Status</Text>
-              <Text
-                style={[
-                  styles.crowdingValue,
-                  {
-                    color:
-                      selectedBus.crowding_level === 'High'
-                        ? '#FF3B30'
-                        : selectedBus.crowding_level === 'Medium'
-                        ? '#FF9500'
-                        : '#34C759',
-                  },
-                ]}
-              >
-                ● {selectedBus.crowding_level}
+              <Text style={styles.crowdingLabel}>GPS accuracy</Text>
+              <Text style={styles.crowdingValue}>
+                {selectedBus.accuracy_meters == null ? 'Not reported' : `±${Math.round(selectedBus.accuracy_meters)} m`}
               </Text>
             </View>
 
@@ -166,6 +170,13 @@ export default function LiveMapScreen() {
               <Text style={styles.saveBtnText}>⭐ Save Route</Text>
             </TouchableOpacity>
           </View>
+        </View>
+      )}
+
+      {!loading && !selectedBus && (
+        <View style={styles.noBusCard}>
+          <Text style={styles.noBusTitle}>{loadError ? 'Could not load live locations' : 'No buses sharing GPS'}</Text>
+          <Text style={styles.noBusText}>{loadError || 'Enable GPS from the Conductor GPS profile. Locations older than two minutes are hidden.'}</Text>
         </View>
       )}
     </View>
@@ -177,6 +188,9 @@ const styles = StyleSheet.create({
   map: { flex: 1 },
   loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F5F5F7' },
   loadingText: { marginTop: 10, color: '#002060', fontWeight: '600' },
+  noBusCard: { position: 'absolute', top: 150, left: 24, right: 24, backgroundColor: '#FFF', padding: 16, borderRadius: 12, elevation: 4, gap: 6 },
+  noBusTitle: { color: '#002060', fontSize: 14, fontWeight: '800', textAlign: 'center' },
+  noBusText: { color: '#64748B', fontSize: 12, lineHeight: 17, textAlign: 'center' },
   savedOverlay: {
     position: 'absolute',
     top: 50,

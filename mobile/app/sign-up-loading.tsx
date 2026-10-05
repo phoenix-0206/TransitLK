@@ -1,25 +1,27 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 
 export default function SignUpLoadingScreen() {
-  const [progress, setProgress] = useState(28);
+  const [progress, setProgress] = useState(0);
 
   useEffect(() => {
-    // Simulated multi-stage activation loader matching Figma screens
+    // Brief transition after account creation; pass details are collected next.
     const timer = setInterval(() => {
       setProgress((prev) => {
-        if (prev === 28) return 56;
-        if (prev === 56) return 78;
-        if (prev >= 78) {
+        if (prev >= 100) {
           clearInterval(timer);
-          setTimeout(() => router.replace('/pass-activation'), 800);
           return 100;
         }
-        return prev;
+        const next = Math.min(prev + 50, 100);
+        if (next === 100) {
+          clearInterval(timer);
+          setTimeout(() => router.replace('/pass-activation'), 500);
+        }
+        return next;
       });
-    }, 1200);
+    }, 450);
 
     return () => clearInterval(timer);
   }, []);
@@ -56,18 +58,18 @@ export default function SignUpLoadingScreen() {
         {/* Status Encrypted Tag */}
         <View style={styles.encryptedPill}>
           <View style={styles.greenDot} />
-          <Text style={styles.encryptedText}>ENCRYPTED PROVISIONING</Text>
+          <Text style={styles.encryptedText}>ACCOUNT CREATED</Text>
         </View>
 
-        <Text style={styles.mainTitle}>Setting Up Your TransitLK Account...</Text>
+        <Text style={styles.mainTitle}>Your Account Is Ready</Text>
         <Text style={styles.descriptionText}>
-          Verifying National Identity (NIC) with Department of Registration of Persons & synchronizing digital transit pass credentials.
+          Next, choose your Smart Pass type and provide any identity details needed for your selected fare category.
         </Text>
 
         {/* Provisioning Progress Card */}
         <View style={styles.progressBox}>
           <View style={styles.progressHeader}>
-            <Text style={styles.progressLabel}>⚡ Provisioning Smart Pass</Text>
+            <Text style={styles.progressLabel}>Preparing pass setup</Text>
             <Text style={styles.progressPercent}>{progress}%</Text>
           </View>
 
@@ -76,8 +78,8 @@ export default function SignUpLoadingScreen() {
           </View>
 
           <View style={styles.progressFooter}>
-            <Text style={styles.secText}>🔒 256-Bit SSL Secured</Text>
-            <Text style={styles.estText}>Est. time remaining: 3s</Text>
+              <Text style={styles.secText}>Account created securely</Text>
+            <Text style={styles.estText}>Next: pass activation</Text>
           </View>
         </View>
 
@@ -86,8 +88,8 @@ export default function SignUpLoadingScreen() {
           <View style={styles.checkItem}>
             <Ionicons name="checkmark-circle" size={18} color="#0D9488" />
             <View style={{ flex: 1, marginLeft: 8 }}>
-              <Text style={styles.itemTitle}>Mobile Number & OTP Verified</Text>
-              <Text style={styles.itemSub}>+94 77 123 4567</Text>
+              <Text style={styles.itemTitle}>TransitLK account created</Text>
+              <Text style={styles.itemSub}>Your sign-up credentials were accepted</Text>
             </View>
             <View style={styles.successTag}><Text style={styles.successText}>Success</Text></View>
           </View>
@@ -95,26 +97,26 @@ export default function SignUpLoadingScreen() {
           <View style={styles.checkItem}>
             <Ionicons name="checkmark-circle" size={18} color="#0D9488" />
             <View style={{ flex: 1, marginLeft: 8 }}>
-              <Text style={styles.itemTitle}>NIC & Identity Match Confirmed</Text>
-              <Text style={styles.itemSub}>NIC: 199824501234</Text>
+              <Text style={styles.itemTitle}>Profile details submitted</Text>
+              <Text style={styles.itemSub}>Your name and contact details are associated with the account</Text>
             </View>
             <View style={styles.successTag}><Text style={styles.successText}>Success</Text></View>
           </View>
 
           <View style={styles.checkItem}>
-            <ActivityIndicator size="small" color="#002060" />
+            <Ionicons name="arrow-forward-circle-outline" size={18} color="#002060" />
             <View style={{ flex: 1, marginLeft: 8 }}>
-              <Text style={styles.itemTitle}>Issuing Digital Transit Pass</Text>
-              <Text style={styles.itemSub}>Generating QR code & NFC token...</Text>
+              <Text style={styles.itemTitle}>Smart Pass setup is next</Text>
+              <Text style={styles.itemSub}>Choose a virtual or physical pass on the next screen</Text>
             </View>
-            <View style={styles.activeTag}><Text style={styles.activeText}>Active</Text></View>
+            <View style={styles.activeTag}><Text style={styles.activeText}>Next</Text></View>
           </View>
 
           <View style={styles.checkItem}>
             <Ionicons name="ellipse-outline" size={18} color="#CBD5E1" />
             <View style={{ flex: 1, marginLeft: 8 }}>
-              <Text style={styles.itemTitle}>Connecting Commuter Wallet</Text>
-              <Text style={styles.itemSub}>Western Province & SLTB LankaPay network</Text>
+              <Text style={styles.itemTitle}>No pass or wallet is active yet</Text>
+              <Text style={styles.itemSub}>Activation happens after you complete the next step</Text>
             </View>
             <View style={styles.pendingTag}><Text style={styles.pendingText}>Pending</Text></View>
           </View>
@@ -126,7 +128,7 @@ export default function SignUpLoadingScreen() {
           <View style={{ flex: 1, marginLeft: 8 }}>
             <Text style={styles.tipTitle}>Commuter Tip</Text>
             <Text style={styles.tipText}>
-              Your TransitLK pass will link to LankaPay for seamless contactless taps across Colombo buses, suburban rail, and SLTB express buses.
+              You can review your pass type and fare category before finishing setup. No balance is added during account creation.
             </Text>
           </View>
         </View>
@@ -134,7 +136,7 @@ export default function SignUpLoadingScreen() {
         {/* Offline Fallback Action */}
         <TouchableOpacity style={styles.fallbackBtn} onPress={() => router.replace('/pass-activation')}>
           <Ionicons name="refresh-outline" size={16} color="#002060" />
-          <Text style={styles.fallbackText}>Taking too long? Tap to retry or continue in offline mode</Text>
+          <Text style={styles.fallbackText}>Continue to Smart Pass setup</Text>
         </TouchableOpacity>
 
         <View style={styles.gatewayRow}>

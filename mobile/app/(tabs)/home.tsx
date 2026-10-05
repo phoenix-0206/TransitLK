@@ -224,9 +224,9 @@ export default function HomeDashboardScreen() {
 
           <TouchableOpacity
             style={styles.heroBtn}
-            onPress={() => router.push('/interactive-route-map')}
+            onPress={() => router.push('/(tabs)/index' as any)}
           >
-            <Text style={styles.heroBtnText}>Open Interactive Live Map</Text>
+            <Text style={styles.heroBtnText}>View Live Conductor GPS</Text>
             <Ionicons name="arrow-forward" size={16} color="#FFF" />
           </TouchableOpacity>
         </View>
@@ -424,10 +424,10 @@ export default function HomeDashboardScreen() {
         <Text style={styles.gridHeader}>Commuter Services</Text>
         <View style={styles.servicesGrid}>
           {[
-            { icon: 'map-outline' as const, label: 'Route Map', bg: '#EEF2FF', color: '#002060', route: '/interactive-route-map' },
+            { icon: 'map-outline' as const, label: 'Live Bus Map', bg: '#EEF2FF', color: '#002060', route: '/(tabs)/index' as any },
             { icon: 'calendar-outline' as const, label: 'Timetables', bg: '#CCFBF1', color: '#0D9488', route: '/timetable-schedules' },
             { icon: 'calculator-outline' as const, label: 'Fare Finder', bg: '#EEF2FF', color: '#002060', route: '/timetable-schedules' },
-            { icon: 'call-outline' as const, label: 'Helpline\n1955', bg: '#FEE2E2', color: '#DC2626', route: null },
+            { icon: 'navigate-outline' as const, label: 'Conductor GPS', bg: '#CCFBF1', color: '#0D9488', route: '/conductor' },
           ].map((item, idx) => (
             <TouchableOpacity
               key={idx}
@@ -450,7 +450,7 @@ export default function HomeDashboardScreen() {
         <TouchableOpacity
           style={styles.advisoryCard}
           activeOpacity={0.8}
-          onPress={() => router.push('/interactive-route-map')}
+          onPress={() => router.push('/(tabs)/index' as any)}
         >
           <View style={styles.advisoryOverlay}>
             <View style={styles.advisoryTag}>

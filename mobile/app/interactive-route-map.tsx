@@ -1,10 +1,23 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, SafeAreaView } from 'react-native';
 import MapView, { Polyline, Marker } from 'react-native-maps';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
+import { supabase } from '../services/supabase';
+
+type LiveBus = {
+  bus_id: string;
+  bus_number: string;
+  vehicle_registration: string;
+  route_name: string;
+  latitude: number;
+  longitude: number;
+  updated_at: string;
+};
 
 export default function InteractiveRouteMapScreen() {
+  const [liveBuses, setLiveBuses] = useState<LiveBus[]>([]);
+  const mapRef = useRef<MapView>(null);
   const routeCoords = [
     { latitude: 6.9344, longitude: 79.8503 },
     { latitude: 6.9147, longitude: 79.8778 },
@@ -12,6 +25,34 @@ export default function InteractiveRouteMapScreen() {
     { latitude: 6.8885, longitude: 79.9174 },
     { latitude: 6.9061, longitude: 79.9686 },
   ];
+
+  useEffect(() => {
+    let mounted = true;
+    const loadLiveBuses = async () => {
+      const { data } = await supabase
+        .from('conductor_bus_locations')
+        .select('bus_id, bus_number, vehicle_registration, route_name, latitude, longitude, updated_at')
+        .gte('updated_at', new Date(Date.now() - 2 * 60 * 1000).toISOString())
+        .order('updated_at', { ascending: false });
+      if (!mounted) return;
+      const buses = (data ?? []) as LiveBus[];
+      setLiveBuses(buses);
+      const bus = buses[0];
+      if (bus) mapRef.current?.animateToRegion({
+        latitude: bus.latitude,
+        longitude: bus.longitude,
+        latitudeDelta: 0.02,
+        longitudeDelta: 0.02,
+      }, 700);
+    };
+
+    void loadLiveBuses();
+    const timer = setInterval(() => void loadLiveBuses(), 8000);
+    return () => {
+      mounted = false;
+      clearInterval(timer);
+    };
+  }, []);
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -34,6 +75,7 @@ export default function InteractiveRouteMapScreen() {
 
         {/* Map Area */}
         <MapView
+          ref={mapRef}
           style={styles.map}
           initialRegion={{
             latitude: 6.9061,
@@ -43,7 +85,15 @@ export default function InteractiveRouteMapScreen() {
           }}
         >
           <Polyline coordinates={routeCoords} strokeColor="#0D9488" strokeWidth={4} />
-          <Marker coordinate={routeCoords[2]} title="WP-NB-6240" description="38 km/h • Rajagiriya Approaching" />
+          {liveBuses.map((bus) => (
+            <Marker
+              key={bus.bus_id}
+              coordinate={{ latitude: bus.latitude, longitude: bus.longitude }}
+              title={`Bus ${bus.bus_number} • ${bus.vehicle_registration}`}
+              description={`${bus.route_name} • Updated ${new Date(bus.updated_at).toLocaleTimeString()}`}
+              pinColor="#0D9488"
+            />
+          ))}
         </MapView>
 
         {/* Route Details Bottom Sheet */}

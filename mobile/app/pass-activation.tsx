@@ -1,13 +1,42 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView, SafeAreaView } from 'react-native';
-import { Ionicons, FontAwesome5 } from '@expo/vector-icons';
+import React, { useEffect, useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, SafeAreaView } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
+import { supabase } from '../services/supabase';
 
 export default function PassActivationScreen() {
   const [passMedium, setPassMedium] = useState<'virtual' | 'physical'>('virtual');
-  const [nic, setNic] = useState('199824501234V');
   const [category, setCategory] = useState<'regular' | 'student' | 'senior'>('regular');
   const [balance, setBalance] = useState('1000');
+  const [cardName, setCardName] = useState('TransitLK Commuter');
+  const [saving, setSaving] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      const name = user?.user_metadata?.full_name;
+      if (typeof name === 'string' && name.trim()) setCardName(name.trim());
+    });
+  }, []);
+
+  async function finishPassSetup() {
+    setSaving(true);
+    setErrorMessage('');
+    const { error } = await supabase.auth.updateUser({
+      data: {
+        pass_setup_pending: false,
+        pass_medium: passMedium,
+        pass_category: category,
+        starting_balance_requested: balance,
+      },
+    });
+    setSaving(false);
+    if (error) {
+      setErrorMessage(error.message);
+      return;
+    }
+    router.replace('/(tabs)');
+  }
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -38,8 +67,8 @@ export default function PassActivationScreen() {
               <Text style={styles.pendingText}>● PENDING ACTIVATION</Text>
             </View>
           </View>
-          <Text style={styles.cardName}>Kasun Chamara Jayasinghe</Text>
-          <Text style={styles.cardNumber}>LK-PASS •••• •••• 8920</Text>
+          <Text style={styles.cardName}>{cardName}</Text>
+          <Text style={styles.cardNumber}>Pass not activated</Text>
           <Text style={styles.cardNetwork}>NETWORK: SLTB • Rail • Bus</Text>
         </View>
 
@@ -76,11 +105,10 @@ export default function PassActivationScreen() {
         </TouchableOpacity>
 
         {/* Identity & Category */}
-        <Text style={styles.sectionTitle}>Identity & Fare Eligibility</Text>
-        <View style={styles.inputBox}>
-          <TextInput style={styles.textInput} value={nic} onChangeText={setNic} placeholder="NIC or Passport No." />
-          <Ionicons name="checkmark-circle" size={18} color="#0D9488" />
-        </View>
+        <Text style={styles.sectionTitle}>Fare Eligibility</Text>
+        <Text style={styles.identityNote}>
+          Choose a fare category below. This app does not verify or store NIC/passport details on this screen.
+        </Text>
 
         <View style={styles.categoryRow}>
           {[
@@ -100,7 +128,8 @@ export default function PassActivationScreen() {
         </View>
 
         {/* Balance Top up */}
-        <Text style={styles.sectionTitle}>Add Starting Balance (Optional)</Text>
+        <Text style={styles.sectionTitle}>Starting Balance</Text>
+        <Text style={styles.identityNote}>Select an intended amount; payment is not processed here.</Text>
         <View style={styles.balanceRow}>
           {['500', '1000', '2500'].map((amt) => (
             <TouchableOpacity
@@ -113,9 +142,10 @@ export default function PassActivationScreen() {
           ))}
         </View>
 
-        <TouchableOpacity style={styles.activateBtn} onPress={() => router.replace('/(tabs)')}>
-          <Text style={styles.activateBtnText}>Activate Smart Pass & Enter App</Text>
-          <Ionicons name="arrow-forward" size={18} color="#FFF" />
+        {!!errorMessage && <Text accessibilityRole="alert" style={styles.errorText}>{errorMessage}</Text>}
+        <TouchableOpacity style={styles.activateBtn} onPress={finishPassSetup} disabled={saving}>
+          <Text style={styles.activateBtnText}>{saving ? 'Saving...' : 'Save Pass Setup & Enter App'}</Text>
+          {!saving && <Ionicons name="arrow-forward" size={18} color="#FFF" />}
         </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
@@ -162,4 +192,6 @@ const styles = StyleSheet.create({
   balanceTextActive: { color: '#FFF' },
   activateBtn: { backgroundColor: '#002060', height: 50, borderRadius: 10, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 8, marginBottom: 20 },
   activateBtnText: { color: '#FFF', fontWeight: 'bold', fontSize: 15 },
+  identityNote: { fontSize: 11, color: '#64748B', lineHeight: 16, marginBottom: 8 },
+  errorText: { color: '#B91C1C', fontSize: 12, marginBottom: 8 },
 });

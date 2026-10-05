@@ -1,12 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, ScrollView } from 'react-native';
-import { Ionicons, FontAwesome5 } from '@expo/vector-icons';
-import { router } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
+import { router, useLocalSearchParams } from 'expo-router';
+import { supabase } from '../services/supabase';
 
 export default function OtpScreen() {
-  const [pin, setPin] = useState(['5', '8', '2', '0', '', '']);
-  const [activeIdx, setActiveIdx] = useState(4);
-  const [timer, setTimer] = useState(47);
+  const { phone } = useLocalSearchParams<{ phone?: string }>();
+  const [pin, setPin] = useState(['', '', '', '', '', '']);
+  const [activeIdx, setActiveIdx] = useState(0);
+  const [timer, setTimer] = useState(60);
+  const [submitting, setSubmitting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -53,7 +57,7 @@ export default function OtpScreen() {
 
         <Text style={styles.pageTitle}>Enter One–Time PIN</Text>
         <Text style={styles.subtitle}>
-          We sent a 6–digit secure code to <Text style={{ fontWeight: 'bold' }}>+94 77 ••• ••38</Text> via Dialog / SLT–Mobitel SMS gateway.
+          {phone ? <>Enter the 6-digit code sent by SMS to <Text style={{ fontWeight: 'bold' }}>{phone}</Text>.</> : 'Enter the 6-digit code sent to your mobile number.'}
         </Text>
 
         <TouchableOpacity style={styles.changeMobileRow}>
@@ -64,7 +68,7 @@ export default function OtpScreen() {
         {/* Pin Boxes */}
         <View style={styles.pinHeader}>
           <Text style={styles.pinLabel}>SMS AUTHENTICATION PIN</Text>
-          <Text style={styles.autoReadText}>● Auto-reading SMS...</Text>
+          <Text style={styles.autoReadText}>● SMS verification</Text>
         </View>
 
         <View style={styles.pinGrid}>
@@ -92,7 +96,19 @@ export default function OtpScreen() {
             <Text style={styles.expiresLabel}>Expires in</Text>
             <Text style={styles.timerValue}>00:{timer < 10 ? `0${timer}` : timer}s</Text>
           </View>
-          <TouchableOpacity style={[styles.resendBtn, timer > 0 && styles.resendBtnDisabled]} disabled={timer > 0}>
+          <TouchableOpacity
+            style={[styles.resendBtn, (timer > 0 || !phone || submitting) && styles.resendBtnDisabled]}
+            disabled={timer > 0 || !phone || submitting}
+            onPress={async () => {
+              if (!phone) return;
+              const { error } = await supabase.auth.signInWithOtp({ phone, options: { shouldCreateUser: false } });
+              if (error) setErrorMessage(error.message);
+              else {
+                setTimer(60);
+                setErrorMessage('A new verification code was sent.');
+              }
+            }}
+          >
             <Ionicons name="chatbox-outline" size={16} color={timer === 0 ? '#002060' : '#A0AEC0'} />
             <Text style={[styles.resendBtnText, timer > 0 && { color: '#A0AEC0' }]}>Resend Code</Text>
           </TouchableOpacity>
@@ -112,9 +128,30 @@ export default function OtpScreen() {
         </View>
 
         {/* Submit */}
-        <TouchableOpacity style={styles.verifyBtn} onPress={() => router.push('/provisioning')}>
-          <Text style={styles.verifyBtnText}>Verify & Continue</Text>
-          <Ionicons name="arrow-forward" size={18} color="#FFF" />
+        {!!errorMessage && <Text accessibilityRole="alert" style={styles.errorText}>{errorMessage}</Text>}
+        <TouchableOpacity
+          style={styles.verifyBtn}
+          disabled={submitting}
+          onPress={async () => {
+            const token = pin.join('');
+            if (!phone) {
+              setErrorMessage('Go back and enter the mobile number you used to request the code.');
+              return;
+            }
+            if (token.length !== 6) {
+              setErrorMessage('Enter all 6 digits of the verification code.');
+              return;
+            }
+            setSubmitting(true);
+            setErrorMessage('');
+            const { data, error } = await supabase.auth.verifyOtp({ phone, token, type: 'sms' });
+            setSubmitting(false);
+            if (error) setErrorMessage(error.message);
+            else router.replace(data.session?.user.user_metadata?.pass_setup_pending ? '/pass-activation' : '/(tabs)');
+          }}
+        >
+          <Text style={styles.verifyBtnText}>{submitting ? 'Verifying...' : 'Verify & Continue'}</Text>
+          {!submitting && <Ionicons name="arrow-forward" size={18} color="#FFF" />}
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.switchBtn} onPress={() => router.push('/login')}>
@@ -189,6 +226,7 @@ const styles = StyleSheet.create({
   altBtnText: { color: '#002060', fontWeight: '600', fontSize: 13 },
   verifyBtn: { backgroundColor: '#002060', height: 50, borderRadius: 10, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 8, marginBottom: 10 },
   verifyBtnText: { color: '#FFF', fontWeight: 'bold', fontSize: 16 },
+  errorText: { color: '#B91C1C', fontSize: 12, marginBottom: 8 },
   switchBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', height: 44, gap: 6, marginBottom: 15 },
   switchBtnText: { color: '#002060', fontWeight: 'bold', fontSize: 13 },
   numpad: { marginTop: 10 },
