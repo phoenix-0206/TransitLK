@@ -155,21 +155,23 @@ export default function SelectTripScreen() {
 
       {/* Top Header Bar */}
       <View style={styles.topHeader}>
-        <Pressable
-          style={({ pressed }) => [styles.backButton, pressed && styles.pressedState]}
-          onPress={() => router.back()}
-          accessibilityLabel="Go back"
-        >
-          <Ionicons name="chevron-back" size={24} color="#0F172A" />
-        </Pressable>
+        <View style={styles.headerLeft}>
+          <Pressable
+            style={({ pressed }) => [styles.backButton, pressed && styles.pressedState]}
+            onPress={() => router.back()}
+            accessibilityLabel="Go back"
+          >
+            <Ionicons name="chevron-back" size={24} color="#0F172A" />
+          </Pressable>
 
-        <View style={styles.brandContainer}>
-          <View style={styles.logoBadge}>
-            <MaterialCommunityIcons name="ticket-confirmation-outline" size={20} color="#FFFFFF" />
-          </View>
-          <View style={styles.brandTextWrap}>
-            <Text style={styles.brandTitle}>TransitLK</Text>
-            <Text style={styles.brandSubtitle}>DIGITAL TICKETS • FR3</Text>
+          <View style={styles.brandContainer}>
+            <View style={styles.logoBadge}>
+              <MaterialCommunityIcons name="ticket-confirmation-outline" size={20} color="#FFFFFF" />
+            </View>
+            <View style={styles.brandTextWrap}>
+              <Text style={styles.brandTitle}>TransitLK</Text>
+              <Text style={styles.brandSubtitle}>DIGITAL TICKETS • FR3</Text>
+            </View>
           </View>
         </View>
 
@@ -375,6 +377,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
     borderBottomColor: '#F1F5F9',
+  },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
   },
   backButton: {
     width: 38,
