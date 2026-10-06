@@ -72,6 +72,16 @@ export default function InteractiveRouteMapScreen() {
     mapRef.current?.animateToRegion(region, 700);
   }, [selectedBus?.bus_id, selectedBus?.latitude, selectedBus?.longitude]);
 
+  function centerOnSelectedBus() {
+    if (!selectedBus) return;
+    mapRef.current?.animateToRegion({
+      latitude: selectedBus.latitude,
+      longitude: selectedBus.longitude,
+      latitudeDelta: 0.02,
+      longitudeDelta: 0.02,
+    }, 500);
+  }
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.container}>
@@ -87,7 +97,17 @@ export default function InteractiveRouteMapScreen() {
             </View>
             <Text style={styles.headerTitle} numberOfLines={1}>{selectedBus?.route_name ?? 'Live bus route'}</Text>
           </View>
-          <TouchableOpacity style={styles.iconBtn} onPress={() => router.push('/vehicle-details')} accessibilityLabel="Open vehicle details"><Ionicons name="information-circle-outline" size={18} color="#002060" /></TouchableOpacity>
+          <TouchableOpacity
+            style={styles.iconBtn}
+            onPress={() => selectedBus && router.push({
+              pathname: '/vehicle-details',
+              params: { busId: selectedBus.bus_id, busNumber: selectedBus.bus_number },
+            })}
+            accessibilityLabel="Open vehicle details"
+            disabled={!selectedBus}
+          >
+            <Ionicons name="information-circle-outline" size={18} color="#002060" />
+          </TouchableOpacity>
         </View>
 
         {/* Map Area */}
@@ -168,14 +188,9 @@ export default function InteractiveRouteMapScreen() {
 
           {/* Action Row */}
           <View style={styles.sheetActions}>
-            <TouchableOpacity style={styles.bellBtn}><Ionicons name="notifications-outline" size={20} color="#002060" /></TouchableOpacity>
-            <TouchableOpacity style={styles.payBtn}>
-              <Ionicons name="qr-code-outline" size={18} color="#FFF" />
-              <Text style={styles.payBtnText}>Pay</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.trackBtn}>
+            <TouchableOpacity style={styles.trackBtn} onPress={centerOnSelectedBus} disabled={!selectedBus}>
               <Ionicons name="navigate-outline" size={18} color="#FFF" />
-              <Text style={styles.trackBtnText}>Track Bus</Text>
+              <Text style={styles.trackBtnText}>{selectedBus ? 'Center on selected bus' : 'No live bus selected'}</Text>
             </TouchableOpacity>
           </View>
         </View>

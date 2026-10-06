@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 
 import { useRouter } from 'expo-router';
+import BottomNavigation from '../../components/BottomNavigation';
 
 // ======================================================
 // CONDUCTOR DASHBOARD
@@ -829,100 +830,15 @@ export default function ConductorDashboardScreen() {
           BOTTOM NAVIGATION
       ================================================== */}
 
-      <View style={styles.bottomNav}>
-
-        {/* Duty Hub */}
-
-        <Pressable
-          style={styles.navItem}
-          onPress={() => {}}
-        >
-
-          <View style={styles.navIconActive}>
-            <Text style={styles.navIconTextActive}>
-              ▦
-            </Text>
-          </View>
-
-          <Text style={styles.navLabelActive}>
-            Duty Hub
-          </Text>
-
-        </Pressable>
-
-        {/* Validate */}
-
-        <Pressable
-          style={styles.navItem}
-          onPress={() =>
-            router.push('/conductor/scanner')
-          }
-        >
-
-          <Text style={styles.navIcon}>
-            ▦
-          </Text>
-
-          <Text style={styles.navLabel}>
-            Validate
-          </Text>
-
-        </Pressable>
-
-        {/* Issue Fare */}
-
-        <Pressable
-          style={styles.navItem}
-          onPress={handleIssueCashTicket}
-        >
-
-          <Text style={styles.navIcon}>
-            ▣
-          </Text>
-
-          <Text style={styles.navLabel}>
-            Issue Fare
-          </Text>
-
-        </Pressable>
-
-        {/* Manifest */}
-
-        <Pressable
-          style={styles.navItem}
-          onPress={handleManifest}
-        >
-
-          <Text style={styles.navIcon}>
-            ♧
-          </Text>
-
-          <Text style={styles.navLabel}>
-            Manifest
-          </Text>
-
-        </Pressable>
-
-        {/* Staff ID */}
-
-        <Pressable
-          style={styles.navItem}
-          onPress={() =>
-            router.push('/conductor/profile')
-          }
-        >
-
-          <Text style={styles.navIcon}>
-            ♙
-          </Text>
-
-          <Text style={styles.navLabel}>
-            Staff ID
-          </Text>
-
-        </Pressable>
-
-      </View>
+      <BottomNavigation
+        items={[
+          { key: 'duty', label: 'Duty Hub', icon: 'grid-outline', active: true, onPress: () => {} },
+          { key: 'validate', label: 'Validate', icon: 'scan-outline', onPress: () => router.push('/conductor/scanner') },
+          { key: 'fare', label: 'Issue Fare', icon: 'ticket-outline', onPress: handleIssueCashTicket },
+          { key: 'manifest', label: 'Manifest', icon: 'list-outline', onPress: handleManifest },
+          { key: 'staff', label: 'Staff ID', icon: 'person-outline', onPress: () => router.push('/conductor/profile') },
+        ]}
+      />
 
     </View>
   );
