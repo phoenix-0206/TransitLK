@@ -1,7 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+
 import {
+  ActivityIndicator,
+  Alert,
   SafeAreaView,
   ScrollView,
   StyleSheet,
@@ -11,10 +14,25 @@ import {
   View,
 } from 'react-native';
 
+import { supabase } from '../../services/supabase';
+
 type Language = 'English' | 'සිංහල' | 'தமிழ்';
+
+type UserPreferences = {
+  id: string;
+  created_at: string;
+  language: Language;
+  delay_alerts: boolean;
+  cancellation_alerts: boolean;
+  crowding_alerts: boolean;
+  saved_route_alerts: boolean;
+  data_saver: boolean;
+};
 
 export default function SettingsPreferencesScreen() {
   const router = useRouter();
+
+  const [preferenceId, setPreferenceId] = useState<string | null>(null);
 
   const [language, setLanguage] = useState<Language>('English');
 
@@ -24,6 +42,149 @@ export default function SettingsPreferencesScreen() {
   const [savedRouteAlerts, setSavedRouteAlerts] = useState(true);
   const [dataSaver, setDataSaver] = useState(false);
 
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [savedMessage, setSavedMessage] = useState('');
+
+  useEffect(() => {
+    loadPreferences();
+  }, []);
+
+  // --------------------------------------------------
+  // READ + CREATE
+  // --------------------------------------------------
+
+  const loadPreferences = async () => {
+    try {
+      setLoading(true);
+
+      const { data, error } = await supabase
+        .from('user_preferences')
+        .select('*')
+        .order('created_at', { ascending: true })
+        .limit(1);
+
+      if (error) {
+        throw error;
+      }
+
+      // If no preference record exists yet,
+      // create the default record.
+      if (!data || data.length === 0) {
+        const { data: createdData, error: createError } =
+          await supabase
+            .from('user_preferences')
+            .insert([
+              {
+                language: 'English',
+                delay_alerts: true,
+                cancellation_alerts: true,
+                crowding_alerts: true,
+                saved_route_alerts: true,
+                data_saver: false,
+              },
+            ])
+            .select()
+            .single();
+
+        if (createError) {
+          throw createError;
+        }
+
+        applyPreferences(createdData as UserPreferences);
+
+        return;
+      }
+
+      applyPreferences(data[0] as UserPreferences);
+    } catch (error) {
+      console.error('Error loading preferences:', error);
+
+      Alert.alert(
+        'Unable to Load Preferences',
+        'Your preferences could not be loaded. Please try again.'
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const applyPreferences = (preferences: UserPreferences) => {
+    setPreferenceId(preferences.id);
+
+    setLanguage(preferences.language ?? 'English');
+
+    setDelayAlerts(preferences.delay_alerts ?? true);
+
+    setCancellationAlerts(
+      preferences.cancellation_alerts ?? true
+    );
+
+    setCrowdingAlerts(
+      preferences.crowding_alerts ?? true
+    );
+
+    setSavedRouteAlerts(
+      preferences.saved_route_alerts ?? true
+    );
+
+    setDataSaver(
+      preferences.data_saver ?? false
+    );
+  };
+
+  // --------------------------------------------------
+  // UPDATE
+  // --------------------------------------------------
+
+  const savePreferences = async () => {
+    if (!preferenceId) {
+      Alert.alert(
+        'Preferences Not Ready',
+        'Please wait for your preferences to finish loading.'
+      );
+
+      return;
+    }
+
+    try {
+      setSaving(true);
+      setSavedMessage('');
+
+      const { error } = await supabase
+        .from('user_preferences')
+        .update({
+          language,
+          delay_alerts: delayAlerts,
+          cancellation_alerts: cancellationAlerts,
+          crowding_alerts: crowdingAlerts,
+          saved_route_alerts: savedRouteAlerts,
+          data_saver: dataSaver,
+        })
+        .eq('id', preferenceId);
+
+      if (error) {
+        throw error;
+      }
+
+      setSavedMessage('Your preferences have been saved.');
+    } catch (error) {
+      console.error('Error saving preferences:', error);
+
+      Alert.alert(
+        'Save Failed',
+        'Unable to save your preferences. Please try again.'
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const selectLanguage = (selectedLanguage: Language) => {
+    setLanguage(selectedLanguage);
+    setSavedMessage('');
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       {/* Header */}
@@ -32,11 +193,18 @@ export default function SettingsPreferencesScreen() {
           style={styles.backButton}
           onPress={() => router.back()}
         >
-          <Ionicons name="arrow-back" size={22} color="#111827" />
+          <Ionicons
+            name="arrow-back"
+            size={22}
+            color="#111827"
+          />
         </TouchableOpacity>
 
         <View style={styles.headerText}>
-          <Text style={styles.headerTitle}>Settings & Preferences</Text>
+          <Text style={styles.headerTitle}>
+            Settings & Preferences
+          </Text>
+
           <Text style={styles.headerSubtitle}>
             Customize your TransitLK experience
           </Text>
@@ -51,126 +219,220 @@ export default function SettingsPreferencesScreen() {
         </View>
       </View>
 
-      <ScrollView
-        contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Language Section */}
-        <Text style={styles.sectionTitle}>LANGUAGE</Text>
+      {loading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator
+            size="large"
+            color="#2563EB"
+          />
 
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>App Language</Text>
-
-          <Text style={styles.cardDescription}>
-            Choose your preferred language for TransitLK.
+          <Text style={styles.loadingText}>
+            Loading preferences...
+          </Text>
+        </View>
+      ) : (
+        <ScrollView
+          contentContainerStyle={styles.content}
+          showsVerticalScrollIndicator={false}
+        >
+          {/* Language Section */}
+          <Text style={styles.sectionTitle}>
+            LANGUAGE
           </Text>
 
-          <LanguageOption
-            title="English"
-            subtitle="English"
-            selected={language === 'English'}
-            onPress={() => setLanguage('English')}
-          />
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>
+              App Language
+            </Text>
 
-          <View style={styles.divider} />
+            <Text style={styles.cardDescription}>
+              Choose your preferred language for TransitLK.
+            </Text>
 
-          <LanguageOption
-            title="සිංහල"
-            subtitle="Sinhala"
-            selected={language === 'සිංහල'}
-            onPress={() => setLanguage('සිංහල')}
-          />
+            <LanguageOption
+              title="English"
+              subtitle="English"
+              selected={language === 'English'}
+              onPress={() =>
+                selectLanguage('English')
+              }
+            />
 
-          <View style={styles.divider} />
+            <View style={styles.divider} />
 
-          <LanguageOption
-            title="தமிழ்"
-            subtitle="Tamil"
-            selected={language === 'தமிழ்'}
-            onPress={() => setLanguage('தமிழ்')}
-          />
-        </View>
+            <LanguageOption
+              title="සිංහල"
+              subtitle="Sinhala"
+              selected={language === 'සිංහල'}
+              onPress={() =>
+                selectLanguage('සිංහල')
+              }
+            />
 
-        {/* Notification Preferences */}
-        <Text style={styles.sectionTitle}>NOTIFICATION PREFERENCES</Text>
+            <View style={styles.divider} />
 
-        <View style={styles.card}>
-          <SettingToggle
-            icon="time-outline"
-            title="Delay Alerts"
-            description="Receive updates when your bus or route is delayed."
-            value={delayAlerts}
-            onValueChange={setDelayAlerts}
-          />
-
-          <View style={styles.divider} />
-
-          <SettingToggle
-            icon="close-circle-outline"
-            title="Cancellation Alerts"
-            description="Receive alerts when a bus service is cancelled."
-            value={cancellationAlerts}
-            onValueChange={setCancellationAlerts}
-          />
-
-          <View style={styles.divider} />
-
-          <SettingToggle
-            icon="people-outline"
-            title="Crowding Alerts"
-            description="Get updates about passenger crowding levels."
-            value={crowdingAlerts}
-            onValueChange={setCrowdingAlerts}
-          />
-
-          <View style={styles.divider} />
-
-          <SettingToggle
-            icon="bookmark-outline"
-            title="Saved Route Alerts"
-            description="Receive updates for routes you have saved."
-            value={savedRouteAlerts}
-            onValueChange={setSavedRouteAlerts}
-          />
-        </View>
-
-        {/* Data & Performance */}
-        <Text style={styles.sectionTitle}>DATA & PERFORMANCE</Text>
-
-        <View style={styles.card}>
-          <SettingToggle
-            icon="cellular-outline"
-            title="Data Saver"
-            description="Reduce mobile data usage while using TransitLK."
-            value={dataSaver}
-            onValueChange={setDataSaver}
-          />
-        </View>
-
-        {/* Information */}
-        <View style={styles.infoCard}>
-          <View style={styles.infoIcon}>
-            <Ionicons
-              name="information-circle-outline"
-              size={23}
-              color="#2563EB"
+            <LanguageOption
+              title="தமிழ்"
+              subtitle="Tamil"
+              selected={language === 'தமிழ்'}
+              onPress={() =>
+                selectLanguage('தமிழ்')
+              }
             />
           </View>
 
-          <View style={styles.infoContent}>
-            <Text style={styles.infoTitle}>
-              About your preferences
-            </Text>
+          {/* Notification Preferences */}
+          <Text style={styles.sectionTitle}>
+            NOTIFICATION PREFERENCES
+          </Text>
 
-            <Text style={styles.infoText}>
-              You can change your language, notification and data
-              preferences whenever you need.
-            </Text>
+          <View style={styles.card}>
+            <SettingToggle
+              icon="time-outline"
+              title="Delay Alerts"
+              description="Receive updates when your bus or route is delayed."
+              value={delayAlerts}
+              onValueChange={(value) => {
+                setDelayAlerts(value);
+                setSavedMessage('');
+              }}
+            />
+
+            <View style={styles.divider} />
+
+            <SettingToggle
+              icon="close-circle-outline"
+              title="Cancellation Alerts"
+              description="Receive alerts when a bus service is cancelled."
+              value={cancellationAlerts}
+              onValueChange={(value) => {
+                setCancellationAlerts(value);
+                setSavedMessage('');
+              }}
+            />
+
+            <View style={styles.divider} />
+
+            <SettingToggle
+              icon="people-outline"
+              title="Crowding Alerts"
+              description="Get updates about passenger crowding levels."
+              value={crowdingAlerts}
+              onValueChange={(value) => {
+                setCrowdingAlerts(value);
+                setSavedMessage('');
+              }}
+            />
+
+            <View style={styles.divider} />
+
+            <SettingToggle
+              icon="bookmark-outline"
+              title="Saved Route Alerts"
+              description="Receive updates for routes you have saved."
+              value={savedRouteAlerts}
+              onValueChange={(value) => {
+                setSavedRouteAlerts(value);
+                setSavedMessage('');
+              }}
+            />
           </View>
-        </View>
 
-        <Text style={styles.version}>TransitLK</Text>
-      </ScrollView>
+          {/* Data & Performance */}
+          <Text style={styles.sectionTitle}>
+            DATA & PERFORMANCE
+          </Text>
+
+          <View style={styles.card}>
+            <SettingToggle
+              icon="cellular-outline"
+              title="Data Saver"
+              description="Reduce mobile data usage while using TransitLK."
+              value={dataSaver}
+              onValueChange={(value) => {
+                setDataSaver(value);
+                setSavedMessage('');
+              }}
+            />
+          </View>
+
+          {/* Save Button */}
+          <TouchableOpacity
+            style={[
+              styles.saveButton,
+              saving && styles.saveButtonDisabled,
+            ]}
+            onPress={savePreferences}
+            disabled={saving}
+            activeOpacity={0.85}
+          >
+            {saving ? (
+              <>
+                <ActivityIndicator
+                  size="small"
+                  color="#FFFFFF"
+                />
+
+                <Text style={styles.saveButtonText}>
+                  Saving...
+                </Text>
+              </>
+            ) : (
+              <>
+                <Ionicons
+                  name="checkmark-circle-outline"
+                  size={20}
+                  color="#FFFFFF"
+                />
+
+                <Text style={styles.saveButtonText}>
+                  Save Preferences
+                </Text>
+              </>
+            )}
+          </TouchableOpacity>
+
+          {savedMessage !== '' && (
+            <View style={styles.successMessage}>
+              <Ionicons
+                name="checkmark-circle"
+                size={20}
+                color="#16A34A"
+              />
+
+              <Text style={styles.successMessageText}>
+                {savedMessage}
+              </Text>
+            </View>
+          )}
+
+          {/* Information */}
+          <View style={styles.infoCard}>
+            <View style={styles.infoIcon}>
+              <Ionicons
+                name="information-circle-outline"
+                size={23}
+                color="#2563EB"
+              />
+            </View>
+
+            <View style={styles.infoContent}>
+              <Text style={styles.infoTitle}>
+                About your preferences
+              </Text>
+
+              <Text style={styles.infoText}>
+                You can change your language, notification and data
+                preferences whenever you need.
+              </Text>
+            </View>
+          </View>
+
+          <Text style={styles.version}>
+            TransitLK
+          </Text>
+        </ScrollView>
+      )}
     </SafeAreaView>
   );
 }
@@ -205,7 +467,11 @@ function LanguageOption({
         <Ionicons
           name="language-outline"
           size={20}
-          color={selected ? '#2563EB' : '#6B7280'}
+          color={
+            selected
+              ? '#2563EB'
+              : '#6B7280'
+          }
         />
       </View>
 
@@ -213,7 +479,8 @@ function LanguageOption({
         <Text
           style={[
             styles.languageTitle,
-            selected && styles.selectedLanguageTitle,
+            selected &&
+              styles.selectedLanguageTitle,
           ]}
         >
           {title}
@@ -227,10 +494,13 @@ function LanguageOption({
       <View
         style={[
           styles.radioOuter,
-          selected && styles.selectedRadioOuter,
+          selected &&
+            styles.selectedRadioOuter,
         ]}
       >
-        {selected && <View style={styles.radioInner} />}
+        {selected && (
+          <View style={styles.radioInner} />
+        )}
       </View>
     </TouchableOpacity>
   );
@@ -280,7 +550,11 @@ function SettingToggle({
           false: '#D1D5DB',
           true: '#93C5FD',
         }}
-        thumbColor={value ? '#2563EB' : '#F9FAFB'}
+        thumbColor={
+          value
+            ? '#2563EB'
+            : '#F9FAFB'
+        }
       />
     </View>
   );
@@ -337,6 +611,18 @@ const styles = StyleSheet.create({
     backgroundColor: '#F3F4F6',
     justifyContent: 'center',
     alignItems: 'center',
+  },
+
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
+  loadingText: {
+    fontSize: 13,
+    color: '#6B7280',
+    marginTop: 12,
   },
 
   content: {
@@ -474,6 +760,46 @@ const styles = StyleSheet.create({
     lineHeight: 16,
     color: '#6B7280',
     marginTop: 3,
+  },
+
+  saveButton: {
+    minHeight: 50,
+    backgroundColor: '#2563EB',
+    borderRadius: 14,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 12,
+  },
+
+  saveButtonDisabled: {
+    backgroundColor: '#93C5FD',
+  },
+
+  saveButtonText: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+
+  successMessage: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F0FDF4',
+    borderRadius: 13,
+    padding: 12,
+    marginBottom: 18,
+    borderWidth: 1,
+    borderColor: '#DCFCE7',
+  },
+
+  successMessageText: {
+    flex: 1,
+    marginLeft: 8,
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#166534',
   },
 
   infoCard: {

@@ -1,6 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
   SafeAreaView,
   ScrollView,
   StyleSheet,
@@ -9,59 +11,63 @@ import {
   View,
 } from 'react-native';
 
+import { supabase } from '../../services/supabase';
+
 type AlertType = 'delay' | 'diversion' | 'arrival' | 'cancellation';
 
 type Alert = {
   id: string;
-  bus: string;
   title: string;
   message: string;
-  time: string;
   type: AlertType;
-  badge?: string;
+  route_number: string | null;
+  delay_minutes: number | null;
+  is_read: boolean;
+  is_active: boolean;
+  created_at: string;
 };
-
-const alerts: Alert[] = [
-  {
-    id: '1',
-    bus: 'BUS 138',
-    title: 'Bus 138 Delayed',
-    message: 'Bus 138 is running 10 minutes late due to heavy traffic.',
-    time: '5 min ago',
-    type: 'delay',
-    badge: '+10m Delay',
-  },
-  {
-    id: '2',
-    bus: 'ROUTE 205',
-    title: 'Route 205 Diversion',
-    message: 'Temporary diversion due to road construction. Expect minor delays.',
-    time: '12 min ago',
-    type: 'diversion',
-    badge: 'Diversion',
-  },
-  {
-    id: '3',
-    bus: 'BUS 177',
-    title: 'Your Bus is Arriving',
-    message: 'Bus 177 will arrive at your selected stop in approximately 3 minutes.',
-    time: '18 min ago',
-    type: 'arrival',
-    badge: '3 min',
-  },
-  {
-    id: '4',
-    bus: 'BUS 120',
-    title: 'Service Cancelled',
-    message: 'The next scheduled Bus 120 service has been cancelled.',
-    time: '32 min ago',
-    type: 'cancellation',
-    badge: 'Cancelled',
-  },
-];
 
 export default function NotificationsScreen() {
   const router = useRouter();
+
+  const [alerts, setAlerts] = useState<Alert[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState('');
+
+  useEffect(() => {
+    fetchNotifications();
+  }, []);
+
+  const fetchNotifications = async () => {
+    try {
+      setLoading(true);
+      setErrorMessage('');
+
+
+
+      const { data, error } = await supabase
+        .from('notifications')
+        .select(
+          'id, title, message, type, route_number, delay_minutes, is_read, is_active, created_at'
+        )
+        .eq('is_active', true)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        throw error;
+      }
+
+      setAlerts((data ?? []) as Alert[]);
+    } catch (error) {
+      console.error('Error loading notifications:', error);
+
+      setErrorMessage(
+        'Unable to load transit alerts. Please try again.'
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const getAlertStyle = (type: AlertType) => {
     switch (type) {
@@ -92,14 +98,87 @@ export default function NotificationsScreen() {
           color: '#DC2626',
           background: '#FEF2F2',
         };
+
+      default:
+        return {
+          icon: 'notifications-outline' as const,
+          color: '#2563EB',
+          background: '#EFF6FF',
+        };
     }
   };
+
+  const getBusLabel = (alert: Alert) => {
+    if (!alert.route_number) {
+      return 'TRANSIT ALERT';
+    }
+
+    if (alert.type === 'diversion') {
+      return `ROUTE ${alert.route_number}`;
+    }
+
+    return `BUS ${alert.route_number}`;
+  };
+
+  const getBadge = (alert: Alert) => {
+    switch (alert.type) {
+      case 'delay':
+        return alert.delay_minutes
+          ? `+${alert.delay_minutes}m Delay`
+          : 'Delay';
+
+      case 'diversion':
+        return 'Diversion';
+
+      case 'arrival':
+        return '3 min';
+
+      case 'cancellation':
+        return 'Cancelled';
+
+      default:
+        return 'Alert';
+    }
+  };
+
+  const getTimeAgo = (createdAt: string) => {
+    const createdTime = new Date(createdAt).getTime();
+    const currentTime = new Date().getTime();
+
+    const differenceInMinutes = Math.max(
+      0,
+      Math.floor((currentTime - createdTime) / 60000)
+    );
+
+    if (differenceInMinutes < 1) {
+      return 'Just now';
+    }
+
+    if (differenceInMinutes < 60) {
+      return `${differenceInMinutes} min ago`;
+    }
+
+    const hours = Math.floor(differenceInMinutes / 60);
+
+    if (hours < 24) {
+      return `${hours} hr${hours > 1 ? 's' : ''} ago`;
+    }
+
+    const days = Math.floor(hours / 24);
+
+    return `${days} day${days > 1 ? 's' : ''} ago`;
+  };
+
+  const activeDelayCount = alerts.filter(
+    (alert) => alert.type === 'delay' && alert.is_active
+  ).length;
 
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <View>
           <Text style={styles.headerTitle}>Alerts Feed</Text>
+
           <Text style={styles.headerSubtitle}>
             Live transit updates
           </Text>
@@ -129,7 +208,11 @@ export default function NotificationsScreen() {
           </View>
 
           <View>
-            <Text style={styles.summaryNumber}>3 Active Transit Delays</Text>
+            <Text style={styles.summaryNumber}>
+              {activeDelayCount} Active Transit{' '}
+              {activeDelayCount === 1 ? 'Delay' : 'Delays'}
+            </Text>
+
             <Text style={styles.summaryText}>
               Updates affecting your nearby routes
             </Text>
@@ -138,91 +221,160 @@ export default function NotificationsScreen() {
 
         <Text style={styles.sectionTitle}>LATEST ALERTS</Text>
 
-        {alerts.map((alert) => {
-          const appearance = getAlertStyle(alert.type);
+        {loading && (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color="#2563EB" />
 
-          return (
+            <Text style={styles.loadingText}>
+              Loading transit alerts...
+            </Text>
+          </View>
+        )}
+
+        {!loading && errorMessage !== '' && (
+          <View style={styles.errorCard}>
+            <Ionicons
+              name="alert-circle-outline"
+              size={24}
+              color="#DC2626"
+            />
+
+            <Text style={styles.errorText}>
+              {errorMessage}
+            </Text>
+
             <TouchableOpacity
-              key={alert.id}
-              activeOpacity={0.8}
-              style={[
-                styles.alertCard,
-                {
-                  backgroundColor: appearance.background,
-                  borderLeftColor: appearance.color,
-                },
-              ]}
-              onPress={() =>
-                router.push({
-  pathname: '/notifications/[id]',
-  params: { id: alert.id },
-})
-              }
+              style={styles.retryButton}
+              onPress={fetchNotifications}
             >
-              <View style={styles.cardTopRow}>
-                <View style={styles.busInfo}>
-                  <View
-                    style={[
-                      styles.iconBox,
-                      { backgroundColor: `${appearance.color}15` },
-                    ]}
-                  >
-                    <Ionicons
-                      name={appearance.icon}
-                      size={20}
-                      color={appearance.color}
-                    />
+              <Text style={styles.retryButtonText}>
+                Try Again
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {!loading &&
+          errorMessage === '' &&
+          alerts.map((alert) => {
+            const appearance = getAlertStyle(alert.type);
+
+            return (
+              <TouchableOpacity
+                key={alert.id}
+                activeOpacity={0.8}
+                style={[
+                  styles.alertCard,
+                  {
+                    backgroundColor: appearance.background,
+                    borderLeftColor: appearance.color,
+                  },
+                ]}
+                onPress={() =>
+                  router.push({
+                    pathname: '/notifications/[id]',
+                    params: { id: alert.id },
+                  })
+                }
+              >
+                <View style={styles.cardTopRow}>
+                  <View style={styles.busInfo}>
+                    <View
+                      style={[
+                        styles.iconBox,
+                        {
+                          backgroundColor: `${appearance.color}15`,
+                        },
+                      ]}
+                    >
+                      <Ionicons
+                        name={appearance.icon}
+                        size={20}
+                        color={appearance.color}
+                      />
+                    </View>
+
+                    <Text style={styles.busLabel}>
+                      {getBusLabel(alert)}
+                    </Text>
                   </View>
 
-                  <Text style={styles.busLabel}>{alert.bus}</Text>
+                  <View
+                    style={[
+                      styles.badge,
+                      {
+                        backgroundColor: appearance.color,
+                      },
+                    ]}
+                  >
+                    <Text style={styles.badgeText}>
+                      {getBadge(alert)}
+                    </Text>
+                  </View>
                 </View>
 
-                <View
-                  style={[
-                    styles.badge,
-                    { backgroundColor: appearance.color },
-                  ]}
-                >
-                  <Text style={styles.badgeText}>{alert.badge}</Text>
-                </View>
-              </View>
+                <Text style={styles.alertTitle}>
+                  {alert.title}
+                </Text>
 
-              <Text style={styles.alertTitle}>{alert.title}</Text>
+                <Text style={styles.alertMessage}>
+                  {alert.message}
+                </Text>
 
-              <Text style={styles.alertMessage}>
-                {alert.message}
-              </Text>
+                <View style={styles.cardBottom}>
+                  <View style={styles.timeContainer}>
+                    <Ionicons
+                      name="time-outline"
+                      size={15}
+                      color="#6B7280"
+                    />
 
-              <View style={styles.cardBottom}>
-                <View style={styles.timeContainer}>
+                    <Text style={styles.timeText}>
+                      {getTimeAgo(alert.created_at)}
+                    </Text>
+                  </View>
+
                   <Ionicons
-                    name="time-outline"
-                    size={15}
+                    name="chevron-forward"
+                    size={19}
                     color="#6B7280"
                   />
-                  <Text style={styles.timeText}>{alert.time}</Text>
                 </View>
+              </TouchableOpacity>
+            );
+          })}
 
-                <Ionicons
-                  name="chevron-forward"
-                  size={19}
-                  color="#6B7280"
-                />
-              </View>
-            </TouchableOpacity>
-          );
-        })}
+        {!loading &&
+          errorMessage === '' &&
+          alerts.length === 0 && (
+            <View style={styles.emptyContainer}>
+              <Ionicons
+                name="notifications-off-outline"
+                size={30}
+                color="#9CA3AF"
+              />
 
-        <View style={styles.endMessage}>
-          <Ionicons
-            name="checkmark-circle-outline"
-            size={20}
-            color="#16A34A"
-          />
-          <Text style={styles.endText}>
-            You're all caught up
-          </Text>
-        </View>
+              <Text style={styles.emptyText}>
+                No active transit alerts
+              </Text>
+            </View>
+          )}
+
+        {!loading &&
+          errorMessage === '' &&
+          alerts.length > 0 && (
+            <View style={styles.endMessage}>
+              <Ionicons
+                name="checkmark-circle-outline"
+                size={20}
+                color="#16A34A"
+              />
+
+              <Text style={styles.endText}>
+                You're all caught up
+              </Text>
+            </View>
+          )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -420,5 +572,59 @@ const styles = StyleSheet.create({
     marginLeft: 6,
     color: '#6B7280',
     fontSize: 13,
+  },
+
+  loadingContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 50,
+  },
+
+  loadingText: {
+    marginTop: 12,
+    fontSize: 13,
+    color: '#6B7280',
+  },
+
+  errorCard: {
+    backgroundColor: '#FEF2F2',
+    borderRadius: 18,
+    padding: 20,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#FECACA',
+  },
+
+  errorText: {
+    marginTop: 10,
+    fontSize: 13,
+    color: '#991B1B',
+    textAlign: 'center',
+  },
+
+  retryButton: {
+    marginTop: 14,
+    backgroundColor: '#DC2626',
+    borderRadius: 12,
+    paddingHorizontal: 18,
+    paddingVertical: 9,
+  },
+
+  retryButtonText: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+    fontSize: 13,
+  },
+
+  emptyContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 50,
+  },
+
+  emptyText: {
+    marginTop: 10,
+    color: '#6B7280',
+    fontSize: 14,
   },
 });
