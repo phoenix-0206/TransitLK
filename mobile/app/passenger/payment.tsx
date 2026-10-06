@@ -80,20 +80,22 @@ export default function PaymentScreen() {
     // Simulate instant payment gateway handshake
     setTimeout(() => {
       setIsProcessing(false);
-      const bookingRef = `TLK-${Math.floor(100000 + Math.random() * 900000)}`;
+      const bookingRef = `TRX-${Math.floor(100000 + Math.random() * 900000)}-LK`;
 
       router.push({
         pathname: '/passenger/ticket-confirmation' as any,
         params: {
           bookingRef,
           routeNumber,
+          serviceName: params.serviceName || 'SLTB AC EXPRESS',
           originName,
           destinationName,
           travelDate,
           departureTime,
+          arrivalTime: params.arrivalTime || '09:30 AM',
           totalTickets: String(totalTickets),
           totalPayable: totalPayable.toFixed(2),
-          paymentMethod: selectedMethod === 'card' ? 'Visa ending in 4892' : 'TransitLK Pass',
+          paymentMethod: selectedMethod === 'card' ? 'LankaPay / Visa •••• 4242' : 'TransitLK Pass',
           passengerDetails,
         },
       });
