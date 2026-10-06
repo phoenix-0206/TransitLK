@@ -6,13 +6,14 @@ import {
   ScrollView,
   TextInput,
   TouchableOpacity,
-  SafeAreaView,
   ActivityIndicator,
   RefreshControl,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, FontAwesome5 } from '@expo/vector-icons';
 import { router, useFocusEffect } from 'expo-router';
 import { supabase } from '../../services/supabase';
+import { fetchLiveBusLocations, type LiveBusLocation } from '../../services/liveBusLocations';
 import type { Profile, SavedRoute } from '../../types/database';
 
 export default function HomeDashboardScreen() {
@@ -25,12 +26,16 @@ export default function HomeDashboardScreen() {
 
   // ── Data State ──
   const [savedRoutes, setSavedRoutes] = useState<SavedRoute[]>([]);
+  const [nearbyBuses, setNearbyBuses] = useState<LiveBusLocation[]>([]);
+  const [nearbyLoading, setNearbyLoading] = useState(true);
+  const [nearbyError, setNearbyError] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
 
   // ── Load session & profile on mount and when tab gains focus ──
   useFocusEffect(
     useCallback(() => {
-      loadSession();
+      void loadSession();
+      void loadNearbyBuses();
     }, [])
   );
 
@@ -84,9 +89,23 @@ export default function HomeDashboardScreen() {
     }
   }
 
+  async function loadNearbyBuses() {
+    setNearbyLoading(true);
+    try {
+      const { buses, error } = await fetchLiveBusLocations();
+      setNearbyBuses(buses);
+      setNearbyError(error ?? '');
+    } catch (error) {
+      setNearbyBuses([]);
+      setNearbyError(error instanceof Error ? error.message : 'Unable to load live buses.');
+    } finally {
+      setNearbyLoading(false);
+    }
+  }
+
   async function handleRefresh() {
     setRefreshing(true);
-    await loadSession();
+    await Promise.all([loadSession(), loadNearbyBuses()]);
     setRefreshing(false);
   }
 
@@ -224,7 +243,7 @@ export default function HomeDashboardScreen() {
 
           <TouchableOpacity
             style={styles.heroBtn}
-            onPress={() => router.push('/(tabs)/index' as any)}
+            onPress={() => router.push('/')}
           >
             <Text style={styles.heroBtnText}>View Live Conductor GPS</Text>
             <Ionicons name="arrow-forward" size={16} color="#FFF" />
@@ -307,61 +326,69 @@ export default function HomeDashboardScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Departure Card 1 */}
-        <TouchableOpacity
-          style={styles.depCard}
-          activeOpacity={0.7}
-          onPress={() => router.push('/vehicle-details')}
-        >
-          <View style={styles.depTopRow}>
-            <View style={styles.busBadgeBox}>
-              <Text style={styles.busBadgeTag}>BUS</Text>
-              <Text style={styles.busBadgeNum}>138</Text>
-            </View>
-            <View style={{ flex: 1, marginLeft: 10 }}>
-              <Text style={styles.depRouteTitle}>Maharagama ⇄ Pettah</Text>
-              <Text style={styles.depSubDetails}>
-                SLTB Semi-Lux • Via Galle Rd • Halting at Bay #2
-              </Text>
-            </View>
-            <View style={styles.etaPillGreen}>
-              <Text style={styles.etaGreenText}>● 3 min</Text>
-              <Text style={styles.distText}>350m away</Text>
-            </View>
+        {nearbyLoading ? (
+          <ActivityIndicator color="#002060" style={{ marginVertical: 18 }} />
+        ) : nearbyError && nearbyBuses.length === 0 ? (
+          <View style={styles.nearbyEmpty}>
+            <Text style={styles.nearbyEmptyText}>{nearbyError}</Text>
+            <TouchableOpacity onPress={() => void loadNearbyBuses()}>
+              <Text style={styles.seeAllText}>Retry</Text>
+            </TouchableOpacity>
           </View>
-          <View style={styles.depFooterRow}>
-            <Text style={styles.crowdTextGreen}>● Low Crowding (~22 seats free)</Text>
-            <Text style={styles.acText}>Ac Air-conditioned</Text>
+        ) : nearbyBuses.length === 0 ? (
+          <View style={styles.nearbyEmpty}>
+            <Ionicons name="bus-outline" size={22} color="#64748B" />
+            <Text style={styles.nearbyEmptyText}>No buses are sharing a current location.</Text>
           </View>
-        </TouchableOpacity>
+        ) : nearbyBuses.slice(0, 5).map((bus) => {
+          const etaLabel = bus.eta_minutes == null ? (bus.source === 'conductor' ? 'GPS LIVE' : 'ETA N/A') : `${bus.eta_minutes} min`;
+          const updatedTime = new Date(bus.updated_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-        {/* Departure Card 2 */}
-        <TouchableOpacity
-          style={styles.depCard}
-          activeOpacity={0.7}
-          onPress={() => router.push('/vehicle-details')}
-        >
-          <View style={styles.depTopRow}>
-            <View style={styles.busBadgeBoxBlue}>
-              <Text style={styles.busBadgeTag}>BUS</Text>
-              <Text style={styles.busBadgeNum}>100</Text>
-            </View>
-            <View style={{ flex: 1, marginLeft: 10 }}>
-              <Text style={styles.depRouteTitle}>Panadura ⇄ Pettah</Text>
-              <Text style={styles.depSubDetails}>
-                Coastal Line • Galle Road Seaside Shelter
-              </Text>
-            </View>
-            <View style={styles.etaPillBlue}>
-              <Text style={styles.etaBlueText}>7 min</Text>
-              <Text style={styles.distText}>900m away</Text>
-            </View>
-          </View>
-          <View style={styles.depFooterRow}>
-            <Text style={styles.crowdTextBlue}>● Moderate Crowding (~8 seats free)</Text>
-            <Text style={styles.acText}>Standard Normal</Text>
-          </View>
-        </TouchableOpacity>
+          return (
+            <TouchableOpacity
+              key={bus.bus_id}
+              style={styles.depCard}
+              activeOpacity={0.7}
+              onPress={() => router.push({
+                pathname: '/interactive-route-map',
+                params: {
+                  busId: bus.bus_id,
+                  busNumber: bus.bus_number,
+                  routeName: bus.route_name,
+                  vehicleRegistration: bus.vehicle_registration ?? '',
+                  source: bus.source,
+                  etaMinutes: bus.eta_minutes == null ? '' : String(bus.eta_minutes),
+                  crowdingLevel: bus.crowding_level ?? '',
+                  latitude: String(bus.latitude),
+                  longitude: String(bus.longitude),
+                },
+              })}
+            >
+              <View style={styles.depTopRow}>
+                <View style={bus.source === 'admin' ? styles.busBadgeBox : styles.busBadgeBoxBlue}>
+                  <Text style={styles.busBadgeTag}>BUS</Text>
+                  <Text style={styles.busBadgeNum}>{bus.bus_number}</Text>
+                </View>
+                <View style={{ flex: 1, marginLeft: 10 }}>
+                  <Text style={styles.depRouteTitle} numberOfLines={1}>{bus.route_name}</Text>
+                  <Text style={styles.depSubDetails} numberOfLines={1}>
+                    {bus.vehicle_registration ? `${bus.vehicle_registration} • ` : ''}{bus.source === 'admin' ? 'Admin location' : 'Conductor GPS'}
+                  </Text>
+                </View>
+                <View style={bus.source === 'admin' ? styles.etaPillGreen : styles.etaPillBlue}>
+                  <Text style={bus.source === 'admin' ? styles.etaGreenText : styles.etaBlueText}>{etaLabel}</Text>
+                  <Text style={styles.distText}>Live location</Text>
+                </View>
+              </View>
+              <View style={styles.depFooterRow}>
+                <Text style={bus.source === 'admin' ? styles.crowdTextGreen : styles.crowdTextBlue}>
+                  {bus.crowding_level ? `● ${bus.crowding_level} crowding` : '● Live bus location'}
+                </Text>
+                <Text style={styles.acText}>Updated {updatedTime}</Text>
+              </View>
+            </TouchableOpacity>
+          );
+        })}
 
         {/* ═══ Saved Routes Section ═══ */}
         <View style={styles.sectionHeader}>
@@ -423,18 +450,18 @@ export default function HomeDashboardScreen() {
         {/* ═══ Commuter Services Grid ═══ */}
         <Text style={styles.gridHeader}>Commuter Services</Text>
         <View style={styles.servicesGrid}>
-          {[
-            { icon: 'map-outline' as const, label: 'Live Bus Map', bg: '#EEF2FF', color: '#002060', route: '/(tabs)/index' as any },
+          {([
+            { icon: 'map-outline', label: 'Live Bus Map', bg: '#EEF2FF', color: '#002060', route: '/' },
             { icon: 'calendar-outline' as const, label: 'Timetables', bg: '#CCFBF1', color: '#0D9488', route: '/timetable-schedules' },
             { icon: 'calculator-outline' as const, label: 'Fare Finder', bg: '#EEF2FF', color: '#002060', route: '/timetable-schedules' },
             { icon: 'navigate-outline' as const, label: 'Conductor GPS', bg: '#CCFBF1', color: '#0D9488', route: '/conductor' },
-          ].map((item, idx) => (
+          ] as const).map((item, idx) => (
             <TouchableOpacity
               key={idx}
               style={styles.serviceItem}
               onPress={() => {
                 if (item.route) {
-                  router.push(item.route as any);
+                  router.push(item.route);
                 }
               }}
             >
@@ -450,7 +477,7 @@ export default function HomeDashboardScreen() {
         <TouchableOpacity
           style={styles.advisoryCard}
           activeOpacity={0.8}
-          onPress={() => router.push('/(tabs)/index' as any)}
+          onPress={() => router.push('/')}
         >
           <View style={styles.advisoryOverlay}>
             <View style={styles.advisoryTag}>
@@ -705,6 +732,8 @@ const styles = StyleSheet.create({
   sectionTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   sectionTitle: { fontSize: 15, fontWeight: 'bold', color: '#002060' },
   seeAllText: { fontSize: 11, fontWeight: 'bold', color: '#002060' },
+  nearbyEmpty: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#FFF', borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 10, padding: 14, marginBottom: 10 },
+  nearbyEmptyText: { flex: 1, color: '#64748B', fontSize: 12, textAlign: 'center' },
 
   // ── Departure Cards ──
   depCard: {

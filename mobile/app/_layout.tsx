@@ -66,7 +66,7 @@ export default function RootLayout() {
       <Stack.Screen name="LiveMapScreen" options={{ title: 'Live Map Detail' }} />
       <Stack.Screen name="interactive-route-map" options={{ title: 'Route Map' }} />
       <Stack.Screen name="timetable-schedules" options={{ title: 'Timetable & Schedules' }} />
-      <Stack.Screen name="vehicle-details" options={{ title: 'Vehicle Details' }} />
+      <Stack.Screen name="vehicle-details" options={{ headerShown: false }} />
       <Stack.Screen name="profile" options={{ title: 'Smart Pass & Profile' }} />
       <Stack.Screen name="admin" options={{ headerShown: false }} />
       <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Info' }} />

@@ -1,21 +1,47 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, SafeAreaView, FlatList } from 'react-native';
+import React, { useCallback, useState } from 'react';
+import { ActivityIndicator, View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
+import { supabase } from '../services/supabase';
+import type { BusSchedule } from '../types/database';
 
 export default function TimetableSchedulesScreen() {
-  const [selectedRoute, setSelectedRoute] = useState('138: Fort ⇄ Maharagama');
-  const [origin, setOrigin] = useState('Colombo Fort');
-  const [destination, setDestination] = useState('Maharagama');
-  const [selectedDate, setSelectedDate] = useState('14 Oct');
-  const [selectedFilter, setSelectedFilter] = useState('All');
+  const [selectedRoute, setSelectedRoute] = useState<string | null>(null);
+  const [schedules, setSchedules] = useState<BusSchedule[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
 
-  // Swap Origin and Destination
-  function handleSwap() {
-    const temp = origin;
-    setOrigin(destination);
-    setDestination(temp);
-  }
+  const fetchSchedules = useCallback(async () => {
+    setLoading(true);
+    const { data, error } = await supabase
+      .from('bus_schedules')
+      .select('*')
+      .eq('is_active', true)
+      .order('departure_time', { ascending: true })
+      .returns<BusSchedule[]>();
+
+    if (error) {
+      setLoadError(error.message);
+      setSchedules([]);
+    } else {
+      setLoadError('');
+      setSchedules(data ?? []);
+    }
+    setLoading(false);
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      void fetchSchedules();
+    }, [fetchSchedules])
+  );
+
+  const routeNumbers = Array.from(new Set(schedules.map((schedule) => schedule.route_number)));
+  const visibleSchedules = schedules.filter(
+    (schedule) => selectedRoute === null || schedule.route_number === selectedRoute
+  );
+  const selectedSchedule = schedules.find((schedule) => schedule.route_number === selectedRoute);
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -52,339 +78,114 @@ export default function TimetableSchedulesScreen() {
 
         {/* Route Selector Box */}
         <View style={styles.selectorCard}>
-          <TouchableOpacity style={styles.routeDropdown}>
+          <View style={styles.routeDropdown}>
             <Ionicons name="bus-outline" size={16} color="#002060" />
-            <Text style={styles.routeDropdownText}>Route 138 • High Level Rd</Text>
+            <Text style={styles.routeDropdownText}>
+              {selectedRoute ? `Route ${selectedRoute}` : 'All bus routes'}
+            </Text>
             <Ionicons name="chevron-down" size={16} color="#002060" />
-            <Text style={styles.activeBusesCount}>18 active buses</Text>
-          </TouchableOpacity>
+            <Text style={styles.activeBusesCount}>{schedules.length} schedules</Text>
+          </View>
 
-          {/* From Origin */}
           <View style={styles.locationInputBox}>
             <Ionicons name="radio-button-on" size={18} color="#002060" />
             <View style={{ flex: 1, marginLeft: 10 }}>
               <Text style={styles.locationLabel}>From Origin</Text>
-              <Text style={styles.locationVal}>{origin}</Text>
+              <Text style={styles.locationVal}>{selectedSchedule?.origin || 'Choose a route below'}</Text>
             </View>
           </View>
 
-          {/* Swap Button Overlap */}
-          <TouchableOpacity style={styles.swapBtn} onPress={handleSwap}>
-            <Ionicons name="swap-vertical" size={18} color="#FFF" />
-          </TouchableOpacity>
-
-          {/* To Destination */}
           <View style={styles.locationInputBox}>
             <Ionicons name="location" size={18} color="#0D9488" />
             <View style={{ flex: 1, marginLeft: 10 }}>
               <Text style={styles.locationLabel}>To Destination</Text>
-              <Text style={styles.locationVal}>{destination}</Text>
+              <Text style={styles.locationVal}>{selectedSchedule?.destination || 'Choose a route below'}</Text>
             </View>
           </View>
 
-          {/* Quick Route Chips */}
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipScroll}>
-            {[
-              '138: Fort ⇄ Maharagama',
-              '177: Kollupitiya ⇄ Kaduwela',
-              '120: Pettah ⇄ Horana',
-            ].map((chip) => (
+            {[null, ...routeNumbers].map((routeNumber) => (
               <TouchableOpacity
-                key={chip}
-                style={[styles.routeChip, selectedRoute === chip && styles.routeChipActive]}
-                onPress={() => setSelectedRoute(chip)}
+                key={routeNumber ?? 'all'}
+                style={[styles.routeChip, selectedRoute === routeNumber && styles.routeChipActive]}
+                onPress={() => setSelectedRoute(routeNumber)}
               >
-                <Text style={[styles.routeChipText, selectedRoute === chip && styles.routeChipTextActive]}>{chip}</Text>
+                <Text style={[styles.routeChipText, selectedRoute === routeNumber && styles.routeChipTextActive]}>
+                  {routeNumber === null ? 'All routes' : `Route ${routeNumber}`}
+                </Text>
               </TouchableOpacity>
             ))}
           </ScrollView>
         </View>
 
-        {/* Mode Selector Pill */}
-        <TouchableOpacity style={styles.modeBar}>
+        <View style={styles.modeBar}>
           <Ionicons name="bus" size={16} color="#FFF" />
-          <Text style={styles.modeBarText}>Bus (SLTB & Pvt)</Text>
-          <View style={styles.modeBadge}><Text style={styles.modeBadgeText}>18</Text></View>
-        </TouchableOpacity>
-
-        {/* Date Filter Bar */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.dateScroll}>
-          {[
-            { label: 'TODAY', date: '14 Oct' },
-            { label: 'TOMORROW', date: '15 Oct' },
-            { label: 'WED', date: '16 Oct' },
-            { label: 'THU', date: '17 Oct' },
-          ].map((item) => (
-            <TouchableOpacity
-              key={item.date}
-              style={[styles.dateChip, selectedDate === item.date && styles.dateChipActive]}
-              onPress={() => setSelectedDate(item.date)}
-            >
-              <Text style={[styles.dateLabel, selectedDate === item.date && styles.dateLabelActive]}>{item.label}</Text>
-              <Text style={[styles.dateVal, selectedDate === item.date && styles.dateValActive]}>{item.date}</Text>
-            </TouchableOpacity>
-          ))}
-          <TouchableOpacity style={styles.calendarChip}>
-            <Ionicons name="calendar-outline" size={18} color="#002060" />
-          </TouchableOpacity>
-        </ScrollView>
-
-        {/* Time Filters */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterScroll}>
-          {['All (18)', '⚡ Now / Next 1h', 'Afternoon (12–16)', 'Evening (16–20)'].map((filter) => (
-            <TouchableOpacity
-              key={filter}
-              style={[styles.timeFilterChip, selectedFilter === filter && styles.timeFilterChipActive]}
-              onPress={() => setSelectedFilter(filter)}
-            >
-              <Text style={[styles.timeFilterText, selectedFilter === filter && styles.timeFilterTextActive]}>{filter}</Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
+          <Text style={styles.modeBarText}>Admin-managed bus schedules</Text>
+          <View style={styles.modeBadge}><Text style={styles.modeBadgeText}>{schedules.length}</Text></View>
+        </View>
 
         {/* Upcoming Departures Section */}
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Upcoming Departures</Text>
-          <Text style={styles.tariffTag}>Standard Tariff Band 1</Text>
+          <Text style={styles.tariffTag}>{visibleSchedules.length} shown</Text>
         </View>
 
-        {/* CARD 1: On-Time SLTB Leyland AC */}
-        <View style={styles.card}>
-          <View style={styles.cardTopRow}>
-            <View style={styles.badgeNumBox}>
-              <Text style={styles.badgeNumText}>138</Text>
-            </View>
-            <View style={{ flex: 1, marginLeft: 10 }}>
-              <Text style={styles.busModelTitle}>SLTB Leyland AC</Text>
-              <Text style={styles.busSubDetail}>WP-ND-8422 • Bay 4 Multi-Modal</Text>
-            </View>
-            <View style={styles.statusPillGreen}>
-              <Text style={styles.statusGreenText}>● On Time • 6 mins</Text>
-            </View>
+        {loading ? (
+          <ActivityIndicator size="large" color="#002060" style={{ marginVertical: 28 }} />
+        ) : loadError ? (
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyTitle}>Could not load bus schedules</Text>
+            <Text style={styles.emptyMessage}>{loadError}</Text>
+            <TouchableOpacity style={styles.retryBtn} onPress={() => void fetchSchedules()}>
+              <Text style={styles.retryBtnText}>Try again</Text>
+            </TouchableOpacity>
           </View>
-
-          {/* Trip Timeline */}
-          <View style={styles.tripTimelineRow}>
-            <View>
-              <Text style={styles.tripTime}>14:30</Text>
-              <Text style={styles.tripStation}>Colombo Fort</Text>
-            </View>
-
-            <View style={styles.timelineBar}>
-              <Text style={styles.timelineDuration}>48m direct</Text>
-              <View style={styles.timelineGraphic}>
-                <View style={styles.dot} />
-                <View style={styles.line} />
-                <Ionicons name="bus-outline" size={14} color="#002060" />
-                <View style={styles.line} />
-                <View style={styles.dot} />
-              </View>
-              <Text style={styles.stopNote}>Non-Stop Nugegoda</Text>
-            </View>
-
-            <View style={{ alignItems: 'flex-end' }}>
-              <Text style={styles.tripTime}>15:18</Text>
-              <Text style={styles.tripStation}>Maharagama</Text>
-            </View>
+        ) : visibleSchedules.length === 0 ? (
+          <View style={styles.emptyState}>
+            <Ionicons name="bus-outline" size={26} color="#64748B" />
+            <Text style={styles.emptyTitle}>
+              {schedules.length === 0 ? 'No schedules have been added yet' : 'No schedules for this route'}
+            </Text>
+            <Text style={styles.emptyMessage}>Schedules created in Admin → Timetables will appear here.</Text>
           </View>
-
-          {/* Capacity & Price */}
-          <View style={styles.cardFooterRow}>
-            <View style={styles.densityPillYellow}>
-              <View style={styles.densityBars}>
-                <View style={[styles.dBar, { backgroundColor: '#D97706' }]} />
-                <View style={[styles.dBar, { backgroundColor: '#D97706' }]} />
-                <View style={[styles.dBar, { backgroundColor: '#CBD5E1' }]} />
+        ) : visibleSchedules.map((schedule) => (
+          <View key={schedule.id} style={styles.card}>
+            <View style={styles.cardTopRow}>
+              <View style={styles.badgeNumBox}>
+                <Text style={styles.badgeNumText}>{schedule.route_number}</Text>
               </View>
-              <View style={{ marginLeft: 6 }}>
-                <Text style={styles.densityTitle}>Moderate Density</Text>
-                <Text style={styles.densitySub}>~16 seats left</Text>
+              <View style={{ flex: 1, marginLeft: 10 }}>
+                <Text style={styles.busModelTitle}>{schedule.bus_type || 'Bus service'}</Text>
+                <Text style={styles.busSubDetail}>{schedule.frequency || 'Departure schedule'}</Text>
+              </View>
+              <View style={styles.statusPillGray}>
+                <Text style={styles.statusGrayText}>Scheduled</Text>
               </View>
             </View>
 
-            <View style={{ alignItems: 'flex-end' }}>
-              <Text style={styles.fareLabel}>Fare</Text>
-              <Text style={styles.fareAmount}>LKR 70<Text style={{ fontSize: 12 }}>.00</Text></Text>
-            </View>
-          </View>
+            <Text style={styles.routeSummary}>{schedule.origin}  →  {schedule.destination}</Text>
 
-          {/* Action Buttons */}
-          <View style={styles.actionBtnRow}>
+            <View style={styles.tripTimelineRow}>
+              <View>
+                <Text style={styles.tripTime}>{schedule.departure_time}</Text>
+                <Text style={styles.tripStation}>Departure</Text>
+              </View>
+              <View style={styles.timelineBar}>
+                <Ionicons name="bus-outline" size={18} color="#0D9488" />
+                <Text style={styles.stopNote}>Route {schedule.route_number}</Text>
+              </View>
+              <View style={{ alignItems: 'flex-end' }}>
+                <Text style={styles.tripTime}>{schedule.arrival_time || '—'}</Text>
+                <Text style={styles.tripStation}>Arrival</Text>
+              </View>
+            </View>
+
             <TouchableOpacity style={styles.trackMapBtn} onPress={() => router.push('/')}>
               <Ionicons name="navigate-outline" size={16} color="#FFF" />
-              <Text style={styles.trackMapBtnText}>Track Live on Map</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.iconActionBtn}>
-              <Ionicons name="notifications-outline" size={18} color="#002060" />
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.qrActionBtn}>
-              <Ionicons name="qr-code-outline" size={18} color="#0D9488" />
+              <Text style={styles.trackMapBtnText}>View live bus map</Text>
             </TouchableOpacity>
           </View>
-        </View>
-
-        {/* CARD 2: Delayed Private Normal Transit */}
-        <View style={styles.card}>
-          <View style={styles.cardTopRow}>
-            <View style={styles.badgeNumBoxTeal}>
-              <Text style={styles.badgeNumText}>138</Text>
-            </View>
-            <View style={{ flex: 1, marginLeft: 10 }}>
-              <Text style={styles.busModelTitle}>Private Normal Transit</Text>
-              <Text style={styles.busSubDetail}>WP-NA-5120 • Stand 02</Text>
-            </View>
-            <View style={styles.statusPillRed}>
-              <Text style={styles.statusRedText}>⚠️ Delayed +8m</Text>
-            </View>
-          </View>
-
-          <View style={styles.tripTimelineRow}>
-            <View>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                <Text style={styles.tripTime}>14:42</Text>
-                <Text style={styles.strikethroughTime}>14:34</Text>
-              </View>
-              <Text style={styles.tripStation}>Departs in 18m</Text>
-            </View>
-
-            <View style={styles.timelineBar}>
-              <Text style={styles.timelineDuration}>53m total</Text>
-              <View style={styles.timelineGraphic}>
-                <View style={styles.dot} />
-                <View style={styles.line} />
-                <View style={styles.dot} />
-              </View>
-              <Text style={styles.stopNote}>All Stops</Text>
-            </View>
-
-            <View style={{ alignItems: 'flex-end' }}>
-              <Text style={styles.tripTime}>15:35</Text>
-              <Text style={styles.tripStation}>Est. Arrival</Text>
-            </View>
-          </View>
-
-          <View style={styles.cardFooterRow}>
-            <View style={styles.densityPillGreen}>
-              <View style={styles.densityBars}>
-                <View style={[styles.dBar, { backgroundColor: '#0D9488' }]} />
-                <View style={[styles.dBar, { backgroundColor: '#CBD5E1' }]} />
-                <View style={[styles.dBar, { backgroundColor: '#CBD5E1' }]} />
-              </View>
-              <View style={{ marginLeft: 6 }}>
-                <Text style={styles.densityTitleGreen}>Low Density</Text>
-                <Text style={styles.densitySub}>~28 seats open</Text>
-              </View>
-            </View>
-
-            <View style={{ alignItems: 'flex-end' }}>
-              <Text style={styles.fareLabel}>Standard Fare</Text>
-              <Text style={styles.fareAmountTeal}>LKR 40<Text style={{ fontSize: 12 }}>.00</Text></Text>
-            </View>
-          </View>
-
-          <View style={styles.actionBtnRow}>
-            <TouchableOpacity style={styles.liveGpsBtn}>
-              <Ionicons name="radio-outline" size={16} color="#002060" />
-              <Text style={styles.liveGpsBtnText}>Live GPS Track</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.remindBtn}>
-              <Ionicons name="notifications-outline" size={16} color="#002060" />
-              <Text style={styles.remindBtnText}>Remind Me</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* CARD 3: Express SLTB Super Comfort */}
-        <View style={styles.card}>
-          <View style={styles.cardTopRow}>
-            <View style={styles.badgeNumBoxNavy}>
-              <Text style={styles.badgeNumText}>138/1</Text>
-            </View>
-            <View style={{ flex: 1, marginLeft: 10 }}>
-              <View style={styles.tagRow}>
-                <Text style={styles.busModelTitle}>SLTB Super Comfort Express</Text>
-                <View style={styles.bypassTag}><Text style={styles.bypassTagText}>BYPASS</Text></View>
-              </View>
-              <Text style={styles.busSubDetail}>Baseline Flyover Route</Text>
-            </View>
-            <View style={styles.statusPillGray}>
-              <Text style={styles.statusGrayText}>Scheduled</Text>
-            </View>
-          </View>
-
-          <View style={styles.tripTimelineRow}>
-            <View>
-              <Text style={styles.tripTime}>14:55</Text>
-              <Text style={styles.tripStation}>Fort Terminal</Text>
-            </View>
-
-            <View style={styles.timelineBar}>
-              <Text style={styles.timelineDurationFast}>43m (Fastest)</Text>
-              <View style={styles.timelineGraphic}>
-                <View style={styles.dot} />
-                <View style={styles.line} />
-                <View style={styles.dot} />
-              </View>
-              <Text style={styles.stopNote}>Direct Highway</Text>
-            </View>
-
-            <View style={{ alignItems: 'flex-end' }}>
-              <Text style={styles.tripTime}>15:38</Text>
-              <Text style={styles.tripStation}>Maharagama</Text>
-            </View>
-          </View>
-
-          <View style={styles.cardFooterRow}>
-            <View style={styles.densityPillRed}>
-              <View style={styles.densityBars}>
-                <View style={[styles.dBar, { backgroundColor: '#DC2626' }]} />
-                <View style={[styles.dBar, { backgroundColor: '#DC2626' }]} />
-                <View style={[styles.dBar, { backgroundColor: '#DC2626' }]} />
-              </View>
-              <View style={{ marginLeft: 6 }}>
-                <Text style={styles.densityTitleRed}>High Density</Text>
-                <Text style={styles.densitySubRed}>Standing likely</Text>
-              </View>
-            </View>
-
-            <View style={{ alignItems: 'flex-end' }}>
-              <Text style={styles.fareLabel}>AC Luxury Fare</Text>
-              <Text style={styles.fareAmountNavy}>LKR 100<Text style={{ fontSize: 12 }}>.00</Text></Text>
-            </View>
-          </View>
-
-          <TouchableOpacity style={styles.reserveBtn}>
-            <Ionicons name="bookmark-outline" size={16} color="#FFF" />
-            <Text style={styles.reserveBtnText}>Reserve e-Seat</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* CARD 4: Trip Cancelled Card */}
-        <View style={styles.cancelledCard}>
-          <View style={styles.cardTopRow}>
-            <View style={styles.badgeNumBoxLight}>
-              <Text style={styles.badgeNumTextDark}>138</Text>
-            </View>
-            <View style={{ flex: 1, marginLeft: 10 }}>
-              <Text style={styles.busModelTitle}>15:10 Semi–Luxury</Text>
-              <Text style={styles.busSubDetail}>Private Transit</Text>
-            </View>
-            <View style={styles.statusPillCancelled}>
-              <Text style={styles.statusCancelledText}>Trip Cancelled</Text>
-            </View>
-          </View>
-
-          <View style={styles.cancellationNoticeBox}>
-            <Ionicons name="alert-circle-outline" size={18} color="#DC2626" />
-            <View style={{ flex: 1, marginLeft: 8 }}>
-              <Text style={styles.noticeTitle}>Vehicle Maintenance at Pettah Depot</Text>
-              <Text style={styles.noticeSub}>Next scheduled Semi-Luxury service will depart at 15:22 from Platform 1.</Text>
-            </View>
-          </View>
-        </View>
+        ))}
 
         {/* Night Owl Bus Schedule Banner */}
         <View style={styles.nightOwlCard}>
@@ -464,6 +265,12 @@ const styles = StyleSheet.create({
   sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
   sectionTitle: { fontSize: 16, fontWeight: 'bold', color: '#002060' },
   tariffTag: { fontSize: 10, color: '#64748B' },
+  routeSummary: { fontSize: 15, fontWeight: '700', color: '#0F172A', marginBottom: 12 },
+  emptyState: { alignItems: 'center', backgroundColor: '#FFF', borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 10, padding: 20, marginTop: 8 },
+  emptyTitle: { color: '#002060', fontWeight: '700', fontSize: 14, textAlign: 'center', marginTop: 8 },
+  emptyMessage: { color: '#64748B', fontSize: 12, textAlign: 'center', marginTop: 6, lineHeight: 18 },
+  retryBtn: { backgroundColor: '#002060', borderRadius: 6, paddingHorizontal: 14, paddingVertical: 9, marginTop: 12 },
+  retryBtnText: { color: '#FFF', fontSize: 12, fontWeight: '700' },
   card: { backgroundColor: '#FFF', borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 14, padding: 14, marginBottom: 12, elevation: 2 },
   cardTopRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
   badgeNumBox: { backgroundColor: '#002060', width: 42, height: 38, borderRadius: 8, justifyContent: 'center', alignItems: 'center' },

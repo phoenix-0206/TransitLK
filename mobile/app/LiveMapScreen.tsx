@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, FlatList, Alert, ActivityIndicator } from 'react-native';
 import MapView, { Marker } from 'react-native-maps';
 import { supabase } from '../services/supabase';
+import { fetchLiveBusLocations } from '../services/liveBusLocations';
 
 export default function LiveMapScreen() {
   const [buses, setBuses] = useState<any[]>([]);
@@ -19,22 +20,10 @@ export default function LiveMapScreen() {
   }, []);
 
   const fetchBusLocations = useCallback(async () => {
-    const { data, error } = await supabase
-      .from('conductor_bus_locations')
-      .select('bus_id, bus_number, vehicle_registration, route_name, latitude, longitude, accuracy_meters, updated_at')
-      .gte('updated_at', new Date(Date.now() - 2 * 60 * 1000).toISOString())
-      .order('updated_at', { ascending: false });
-
-    if (error) {
-      setLoadError(error.message);
-      setBuses([]);
-      setSelectedBus(null);
-    } else {
-      setLoadError('');
-      const activeBuses = data ?? [];
-      setBuses(activeBuses);
-      setSelectedBus((current: any) => activeBuses.find((bus) => bus.bus_id === current?.bus_id) ?? activeBuses[0] ?? null);
-    }
+    const { buses: activeBuses, error } = await fetchLiveBusLocations();
+    setLoadError(error ?? '');
+    setBuses(activeBuses);
+    setSelectedBus((current: any) => activeBuses.find((bus) => bus.bus_id === current?.bus_id) ?? activeBuses[0] ?? null);
     setLoading(false);
   }, []);
 
@@ -113,9 +102,9 @@ export default function LiveMapScreen() {
             <Marker
               key={bus.bus_id}
               coordinate={{ latitude: bus.latitude, longitude: bus.longitude }}
-              title={`Bus ${bus.bus_number} • ${bus.vehicle_registration}`}
-              description={`${bus.route_name} • Updated ${new Date(bus.updated_at).toLocaleTimeString()}`}
-              pinColor="#0D9488"
+              title={`Bus ${bus.bus_number}${bus.vehicle_registration ? ` • ${bus.vehicle_registration}` : ''}`}
+              description={`${bus.source === 'admin' ? 'Admin location' : 'Conductor GPS'} • ${bus.route_name} • Updated ${new Date(bus.updated_at).toLocaleTimeString()}`}
+              pinColor={bus.source === 'admin' ? '#002060' : '#0D9488'}
               onPress={() => setSelectedBus(bus)}
             />
           ))}
@@ -154,7 +143,7 @@ export default function LiveMapScreen() {
           </View>
 
           <View style={styles.etaContainer}>
-            <Text style={styles.etaLabel}>LAST GPS UPDATE</Text>
+            <Text style={styles.etaLabel}>{selectedBus.source === 'admin' ? 'LAST ADMIN UPDATE' : 'LAST GPS UPDATE'}</Text>
             <Text style={styles.etaValue}>{new Date(selectedBus.updated_at).toLocaleTimeString()}</Text>
           </View>
 
@@ -162,7 +151,9 @@ export default function LiveMapScreen() {
             <View>
               <Text style={styles.crowdingLabel}>GPS accuracy</Text>
               <Text style={styles.crowdingValue}>
-                {selectedBus.accuracy_meters == null ? 'Not reported' : `±${Math.round(selectedBus.accuracy_meters)} m`}
+                {selectedBus.source === 'admin'
+                  ? selectedBus.eta_minutes == null ? 'ETA not reported' : `ETA ${selectedBus.eta_minutes} min`
+                  : selectedBus.accuracy_meters == null ? 'Not reported' : `±${Math.round(selectedBus.accuracy_meters)} m`}
               </Text>
             </View>
 
@@ -175,8 +166,8 @@ export default function LiveMapScreen() {
 
       {!loading && !selectedBus && (
         <View style={styles.noBusCard}>
-          <Text style={styles.noBusTitle}>{loadError ? 'Could not load live locations' : 'No buses sharing GPS'}</Text>
-          <Text style={styles.noBusText}>{loadError || 'Enable GPS from the Conductor GPS profile. Locations older than two minutes are hidden.'}</Text>
+          <Text style={styles.noBusTitle}>{loadError ? 'Could not load live locations' : 'No bus locations available'}</Text>
+          <Text style={styles.noBusText}>{loadError || 'Add a bus in Admin or enable GPS from the Conductor GPS profile.'}</Text>
         </View>
       )}
     </View>

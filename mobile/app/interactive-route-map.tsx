@@ -1,49 +1,33 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, SafeAreaView } from 'react-native';
-import MapView, { Polyline, Marker } from 'react-native-maps';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import MapView, { Marker, Region } from 'react-native-maps';
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
+import { fetchLiveBusLocations, type LiveBusLocation } from '../services/liveBusLocations';
 import { supabase } from '../services/supabase';
-
-type LiveBus = {
-  bus_id: string;
-  bus_number: string;
-  vehicle_registration: string;
-  route_name: string;
-  latitude: number;
-  longitude: number;
-  updated_at: string;
-};
+import type { BusSchedule } from '../types/database';
 
 export default function InteractiveRouteMapScreen() {
-  const [liveBuses, setLiveBuses] = useState<LiveBus[]>([]);
+  const { busId, busNumber: requestedBusNumber } = useLocalSearchParams<{ busId?: string; busNumber?: string }>();
+  const [liveBuses, setLiveBuses] = useState<LiveBusLocation[]>([]);
+  const [selectedBusId, setSelectedBusId] = useState(busId ?? '');
+  const [schedule, setSchedule] = useState<BusSchedule | null>(null);
   const mapRef = useRef<MapView>(null);
-  const routeCoords = [
-    { latitude: 6.9344, longitude: 79.8503 },
-    { latitude: 6.9147, longitude: 79.8778 },
-    { latitude: 6.8893, longitude: 79.9015 },
-    { latitude: 6.8885, longitude: 79.9174 },
-    { latitude: 6.9061, longitude: 79.9686 },
-  ];
+  const selectedBus = liveBuses.find((bus) => bus.bus_id === selectedBusId)
+    ?? liveBuses.find((bus) => bus.bus_number === requestedBusNumber)
+    ?? (busId || requestedBusNumber ? null : liveBuses[0] ?? null);
+
+  useEffect(() => {
+    if (busId) setSelectedBusId(busId);
+  }, [busId]);
 
   useEffect(() => {
     let mounted = true;
     const loadLiveBuses = async () => {
-      const { data } = await supabase
-        .from('conductor_bus_locations')
-        .select('bus_id, bus_number, vehicle_registration, route_name, latitude, longitude, updated_at')
-        .gte('updated_at', new Date(Date.now() - 2 * 60 * 1000).toISOString())
-        .order('updated_at', { ascending: false });
+      const { buses } = await fetchLiveBusLocations();
       if (!mounted) return;
-      const buses = (data ?? []) as LiveBus[];
       setLiveBuses(buses);
-      const bus = buses[0];
-      if (bus) mapRef.current?.animateToRegion({
-        latitude: bus.latitude,
-        longitude: bus.longitude,
-        latitudeDelta: 0.02,
-        longitudeDelta: 0.02,
-      }, 700);
     };
 
     void loadLiveBuses();
@@ -53,6 +37,40 @@ export default function InteractiveRouteMapScreen() {
       clearInterval(timer);
     };
   }, []);
+
+  useEffect(() => {
+    if (!selectedBus) {
+      setSchedule(null);
+      return;
+    }
+
+    let mounted = true;
+    const loadSchedule = async () => {
+      const { data } = await supabase
+        .from('bus_schedules')
+        .select('*')
+        .eq('route_number', selectedBus.bus_number)
+        .eq('is_active', true)
+        .order('departure_time', { ascending: true })
+        .limit(1)
+        .returns<BusSchedule[]>();
+      if (mounted) setSchedule(data?.[0] ?? null);
+    };
+
+    void loadSchedule();
+    return () => { mounted = false; };
+  }, [selectedBus?.bus_number]);
+
+  useEffect(() => {
+    if (!selectedBus) return;
+    const region: Region = {
+      latitude: selectedBus.latitude,
+      longitude: selectedBus.longitude,
+      latitudeDelta: 0.02,
+      longitudeDelta: 0.02,
+    };
+    mapRef.current?.animateToRegion(region, 700);
+  }, [selectedBus?.bus_id, selectedBus?.latitude, selectedBus?.longitude]);
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -64,34 +82,28 @@ export default function InteractiveRouteMapScreen() {
           </TouchableOpacity>
           <View style={{ flex: 1, marginHorizontal: 8 }}>
             <View style={styles.badgeRow}>
-              <View style={styles.busBadge}><Text style={styles.busBadgeText}>BUS 177</Text></View>
-              <View style={styles.comfortBadge}><Text style={styles.comfortText}>SLTB SUPER COMFORT</Text></View>
+              <View style={styles.busBadge}><Text style={styles.busBadgeText}>BUS {selectedBus?.bus_number ?? requestedBusNumber ?? '—'}</Text></View>
+              <View style={styles.comfortBadge}><Text style={styles.comfortText}>{selectedBus?.source === 'admin' ? 'ADMIN LOCATION' : selectedBus?.source === 'conductor' ? 'LIVE CONDUCTOR GPS' : 'WAITING FOR LIVE BUS'}</Text></View>
             </View>
-            <Text style={styles.headerTitle}>Fort ⇄ Malabe Express</Text>
+            <Text style={styles.headerTitle} numberOfLines={1}>{selectedBus?.route_name ?? 'Live bus route'}</Text>
           </View>
-          <TouchableOpacity style={styles.iconBtn}><Ionicons name="share-social-outline" size={18} color="#002060" /></TouchableOpacity>
-          <TouchableOpacity style={styles.iconBtn}><Ionicons name="bookmark-outline" size={18} color="#002060" /></TouchableOpacity>
+          <TouchableOpacity style={styles.iconBtn} onPress={() => router.push('/vehicle-details')} accessibilityLabel="Open vehicle details"><Ionicons name="information-circle-outline" size={18} color="#002060" /></TouchableOpacity>
         </View>
 
         {/* Map Area */}
         <MapView
           ref={mapRef}
           style={styles.map}
-          initialRegion={{
-            latitude: 6.9061,
-            longitude: 79.9174,
-            latitudeDelta: 0.1,
-            longitudeDelta: 0.1,
-          }}
+          initialRegion={{ latitude: 6.8893, longitude: 79.855, latitudeDelta: 0.08, longitudeDelta: 0.08 }}
         >
-          <Polyline coordinates={routeCoords} strokeColor="#0D9488" strokeWidth={4} />
           {liveBuses.map((bus) => (
             <Marker
               key={bus.bus_id}
               coordinate={{ latitude: bus.latitude, longitude: bus.longitude }}
-              title={`Bus ${bus.bus_number} • ${bus.vehicle_registration}`}
-              description={`${bus.route_name} • Updated ${new Date(bus.updated_at).toLocaleTimeString()}`}
-              pinColor="#0D9488"
+              title={`Bus ${bus.bus_number}${bus.vehicle_registration ? ` • ${bus.vehicle_registration}` : ''}`}
+              description={`${bus.source === 'admin' ? 'Admin location' : 'Conductor GPS'} • ${bus.route_name} • Updated ${new Date(bus.updated_at).toLocaleTimeString()}`}
+              pinColor={bus.source === 'admin' ? '#002060' : '#0D9488'}
+              onPress={() => setSelectedBusId(bus.bus_id)}
             />
           ))}
         </MapView>
@@ -103,51 +115,55 @@ export default function InteractiveRouteMapScreen() {
           {/* Quick Metrics */}
           <View style={styles.metricsRow}>
             <View style={styles.metricCard}>
-              <Text style={styles.metricLabel}>⏱ PICKUP ETA</Text>
-              <Text style={styles.metricVal}>12 <Text style={{ fontSize: 12 }}>min</Text></Text>
-              <Text style={styles.metricSub}>At Diyatha Uyana</Text>
+              <Text style={styles.metricLabel}>ESTIMATED ARRIVAL</Text>
+              <Text style={styles.metricVal}>{selectedBus?.eta_minutes == null ? '—' : `${selectedBus.eta_minutes} min`}</Text>
+              <Text style={styles.metricSub}>{selectedBus?.source === 'admin' ? 'Admin estimate' : 'Not reported'}</Text>
             </View>
             <View style={styles.metricCard}>
-              <Text style={styles.metricLabel}>🛤 TRIP LENGTH</Text>
-              <Text style={styles.metricVal}>18.4 <Text style={{ fontSize: 12 }}>km</Text></Text>
-              <Text style={styles.metricSub}>Approx 42 mins</Text>
+              <Text style={styles.metricLabel}>GPS ACCURACY</Text>
+              <Text style={styles.metricVal}>{selectedBus?.accuracy_meters == null ? '—' : `±${Math.round(selectedBus.accuracy_meters)} m`}</Text>
+              <Text style={styles.metricSub}>{selectedBus?.vehicle_registration || 'Not reported'}</Text>
             </View>
             <View style={styles.metricCard}>
-              <Text style={styles.metricLabel}>💵 ADULT FARE</Text>
-              <Text style={styles.metricVal}>Rs. 65</Text>
-              <Text style={styles.metricSub}>LankaQR Ready</Text>
+              <Text style={styles.metricLabel}>CROWDING</Text>
+              <Text style={styles.metricVal}>{selectedBus?.crowding_level || '—'}</Text>
+              <Text style={styles.metricSub}>{selectedBus ? new Date(selectedBus.updated_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Waiting for bus'}</Text>
             </View>
           </View>
 
           <View style={styles.crowdBar}>
-            <Ionicons name="people-outline" size={16} color="#0D9488" />
-            <Text style={styles.crowdText}>Moderate Crowding • ~18 seats free • AC Com</Text>
+            <Ionicons name={selectedBus ? 'location-outline' : 'information-circle-outline'} size={16} color="#0D9488" />
+            <Text style={styles.crowdText}>{selectedBus ? `${selectedBus.source === 'admin' ? 'Admin location' : 'Conductor GPS'} • ${selectedBus.route_name}` : 'No active location for this bus.'}</Text>
           </View>
 
           {/* Stop Progression List */}
           <ScrollView style={{ maxHeight: 220 }} showsVerticalScrollIndicator={false}>
             <Text style={styles.timelineHeader}>Stop Progression & Timings</Text>
 
-            {[
-              { title: 'Colombo Fort Terminal (Stand 04)', status: 'Passed on schedule', time: '14:15', state: 'passed' },
-              { title: 'Borella Kanatte Roundabout', status: 'Departed', time: '14:28', state: 'passed' },
-              { title: 'Rajagiriya Fairway Hub', status: 'Bus slowing for passenger drop • 1min away', time: '14:32', state: 'current' },
-              { title: 'Battaramulla – Diyatha Bay #1', status: 'Your Selected Boarding Point • Arriving in 12m', time: '14:42', state: 'selected' },
-              { title: 'Koswatte Junction', status: 'Scheduled intermediate', time: '14:50', state: 'upcoming' },
-              { title: 'Malabe Central Bus Stand', status: 'Athurugiriya Road Terminal', time: '14:57', state: 'upcoming' },
-            ].map((stop, i) => (
-              <View key={i} style={styles.stopRow}>
-                <View style={styles.stopIndicator}>
-                  <View style={[styles.stopDot, stop.state === 'selected' && styles.stopDotActive]} />
-                  {i < 5 && <View style={styles.stopLine} />}
+            {schedule ? (
+              <>
+                <View style={styles.stopRow}>
+                  <View style={styles.stopIndicator}><View style={[styles.stopDot, styles.stopDotActive]} /><View style={styles.stopLine} /></View>
+                  <View style={{ flex: 1, marginLeft: 10 }}>
+                    <Text style={styles.stopTitle}>{schedule.origin}</Text>
+                    <Text style={styles.stopSub}>Departure • {schedule.departure_time}</Text>
+                  </View>
+                  <Text style={styles.stopTime}>FROM</Text>
                 </View>
-                <View style={{ flex: 1, marginLeft: 10 }}>
-                  <Text style={[styles.stopTitle, stop.state === 'selected' && styles.stopTitleActive]}>{stop.title}</Text>
-                  <Text style={styles.stopSub}>{stop.status}</Text>
+                <View style={styles.stopRow}>
+                  <View style={styles.stopIndicator}><View style={styles.stopDot} /></View>
+                  <View style={{ flex: 1, marginLeft: 10 }}>
+                    <Text style={styles.stopTitle}>{schedule.destination}</Text>
+                    <Text style={styles.stopSub}>{schedule.frequency || 'Scheduled route'}{schedule.arrival_time ? ` • Arrival ${schedule.arrival_time}` : ''}</Text>
+                  </View>
+                  <Text style={styles.stopTime}>TO</Text>
                 </View>
-                <Text style={styles.stopTime}>{stop.time}</Text>
+              </>
+            ) : (
+              <View style={styles.noSchedule}>
+                <Text style={styles.stopSub}>No admin timetable is available for this route yet.</Text>
               </View>
-            ))}
+            )}
           </ScrollView>
 
           {/* Action Row */}
@@ -206,4 +222,5 @@ const styles = StyleSheet.create({
   payBtnText: { color: '#FFF', fontWeight: 'bold', fontSize: 14 },
   trackBtn: { flex: 1, backgroundColor: '#002060', borderRadius: 10, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6 },
   trackBtnText: { color: '#FFF', fontWeight: 'bold', fontSize: 14 },
+  noSchedule: { padding: 12, backgroundColor: '#F8FAFC', borderRadius: 8 },
 });

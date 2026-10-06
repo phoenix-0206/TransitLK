@@ -6,12 +6,12 @@ import {
   ScrollView,
   TextInput,
   TouchableOpacity,
-  SafeAreaView,
   Alert,
   FlatList,
   Modal,
   ActivityIndicator,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { supabase } from '../../services/supabase';
@@ -331,12 +331,26 @@ export default function AdminDashboardScreen() {
                     onChangeText={(val) => setFormData({ ...formData, departure_time: val })}
                     placeholder="06:30 AM"
                   />
+                  <Text style={styles.label}>Arrival Time (optional)</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={formData.arrival_time || ''}
+                    onChangeText={(val) => setFormData({ ...formData, arrival_time: val })}
+                    placeholder="07:15 AM"
+                  />
                   <Text style={styles.label}>Frequency</Text>
                   <TextInput
                     style={styles.input}
                     value={formData.frequency}
                     onChangeText={(val) => setFormData({ ...formData, frequency: val })}
                     placeholder="Every 10 Mins"
+                  />
+                  <Text style={styles.label}>Bus Type (optional)</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={formData.bus_type || ''}
+                    onChangeText={(val) => setFormData({ ...formData, bus_type: val })}
+                    placeholder="SLTB / Private / A/C"
                   />
                 </>
               )}

@@ -88,6 +88,13 @@ CREATE TABLE IF NOT EXISTS public.bus_schedules (
   created_at      TIMESTAMPTZ DEFAULT now()
 );
 
+-- Upgrade existing installations where the table predates these schedule fields.
+ALTER TABLE public.bus_schedules
+  ADD COLUMN IF NOT EXISTS arrival_time TEXT,
+  ADD COLUMN IF NOT EXISTS bus_type TEXT DEFAULT 'Normal',
+  ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true;
+NOTIFY pgrst, 'reload schema';
+
 ALTER TABLE public.bus_schedules ENABLE ROW LEVEL SECURITY;
 
 -- Schedules are publicly readable
