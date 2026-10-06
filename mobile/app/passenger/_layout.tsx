@@ -15,6 +15,7 @@ export default function PassengerLayout() {
       <Stack.Screen name="payment" options={{ headerShown: false }} />
       <Stack.Screen name="ticket-confirmation" options={{ headerShown: false }} />
       <Stack.Screen name="purchase-history" options={{ headerShown: false }} />
+      <Stack.Screen name="payment-history" options={{ headerShown: false }} />
     </Stack>
   );
 }
