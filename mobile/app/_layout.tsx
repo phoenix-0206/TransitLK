@@ -42,13 +42,13 @@ export default function RootLayout() {
 
     if (!launchSplashShown.current) {
       launchSplashShown.current = true;
-      if (segments[0] !== 'index') {
+      if ((segments[0] as string) !== 'index') {
         router.replace('/');
       }
       return;
     }
 
-    if (segments[0] === 'index') return;
+    if ((segments[0] as string) === 'index') return;
 
     if (!session && inAuthGroup) {
       router.replace('/login');
