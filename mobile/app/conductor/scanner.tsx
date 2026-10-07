@@ -18,6 +18,8 @@ import {
 
 import { useRouter } from 'expo-router';
 
+import { validateTicket } from '@/services/ticketService';
+
 export default function ConductorScannerScreen() {
   const router = useRouter();
 
@@ -35,6 +37,12 @@ export default function ConductorScannerScreen() {
 
   const [torch, setTorch] =
     useState(false);
+
+  const [validating, setValidating] =
+    useState(false);
+
+  const [scanMethod, setScanMethod] =
+    useState<'QR' | 'MANUAL'>('QR');
 
   // =====================================================
   // CAMERA PERMISSION LOADING
@@ -61,9 +69,7 @@ export default function ConductorScannerScreen() {
 
   if (!permission.granted) {
     return (
-      <SafeAreaView
-        style={styles.permissionContainer}
-      >
+      <SafeAreaView style={styles.permissionContainer}>
         <View style={styles.permissionIcon}>
           <Text style={styles.permissionIconText}>
             📷
@@ -83,9 +89,7 @@ export default function ConductorScannerScreen() {
           style={styles.permissionButton}
           onPress={requestPermission}
         >
-          <Text
-            style={styles.permissionButtonText}
-          >
+          <Text style={styles.permissionButtonText}>
             ALLOW CAMERA
           </Text>
         </Pressable>
@@ -113,16 +117,23 @@ export default function ConductorScannerScreen() {
     data: string;
     type: string;
   }) {
-    if (scanned) {
+    if (scanned || validating) {
+      return;
+    }
+
+    const qrData = data.trim();
+
+    if (!qrData) {
       return;
     }
 
     setScanned(true);
-    setScannedData(data);
+    setScannedData(qrData);
+    setScanMethod('QR');
 
     console.log(
       'Scanned QR:',
-      data,
+      qrData,
       'Type:',
       type,
     );
@@ -147,6 +158,7 @@ export default function ConductorScannerScreen() {
 
     setScanned(true);
     setScannedData(ticketId);
+    setScanMethod('MANUAL');
 
     console.log(
       'Manual ticket:',
@@ -155,13 +167,111 @@ export default function ConductorScannerScreen() {
   }
 
   // =====================================================
+  // VALIDATE TICKET
+  // =====================================================
+
+  async function handleValidateTicket() {
+    const ticketToken =
+      scannedData.trim();
+
+    if (!ticketToken) {
+      Alert.alert(
+        'Invalid Ticket',
+        'No ticket data was detected.',
+      );
+
+      return;
+    }
+
+    if (validating) {
+      return;
+    }
+
+    try {
+      setValidating(true);
+
+      console.log(
+        'Validating ticket:',
+        ticketToken,
+      );
+
+      console.log(
+        'Scan method:',
+        scanMethod,
+      );
+
+      const result =
+        await validateTicket(
+          ticketToken,
+          scanMethod,
+        );
+
+      console.log(
+        'Validation result:',
+        result,
+      );
+
+      router.push({
+        pathname:
+          '/conductor/validation-result',
+
+        params: {
+          result:
+            result.result,
+
+          message:
+            result.message ?? '',
+
+          reason:
+            result.reason ?? '',
+
+          ticketToken,
+
+          scanMethod,
+
+          scanLogged:
+            result.scanLogged
+              ? 'true'
+              : 'false',
+
+          ticket:
+            result.ticket
+              ? JSON.stringify(
+                  result.ticket,
+                )
+              : '',
+        },
+      });
+    } catch (error) {
+      console.error(
+        'Scanner validation error:',
+        error,
+      );
+
+      Alert.alert(
+        'Validation Failed',
+        error instanceof Error
+          ? error.message
+          : 'Could not validate the ticket.',
+      );
+    } finally {
+      setValidating(false);
+    }
+  }
+
+  // =====================================================
   // RESET SCANNER
   // =====================================================
 
   function scanAgain() {
+    if (validating) {
+      return;
+    }
+
     setScanned(false);
     setScannedData('');
     setManualTicketId('');
+    setScanMethod('QR');
   }
 
   // =====================================================
@@ -176,7 +286,6 @@ export default function ConductorScannerScreen() {
       {/* ================================================= */}
 
       <View style={styles.header}>
-
         <Pressable
           style={styles.backButton}
           onPress={() => router.back()}
@@ -197,7 +306,6 @@ export default function ConductorScannerScreen() {
             ♟
           </Text>
         </View>
-
       </View>
 
       {/* ================================================= */}
@@ -205,9 +313,7 @@ export default function ConductorScannerScreen() {
       {/* ================================================= */}
 
       <View style={styles.topInfo}>
-
         <View style={styles.busInfo}>
-
           <View style={styles.liveDot} />
 
           <Text style={styles.busText}>
@@ -227,11 +333,9 @@ export default function ConductorScannerScreen() {
               LIVE
             </Text>
           </View>
-
         </View>
 
         <View style={styles.topActions}>
-
           <Pressable
             style={styles.iconButton}
             onPress={() =>
@@ -256,9 +360,7 @@ export default function ConductorScannerScreen() {
               🔊
             </Text>
           </Pressable>
-
         </View>
-
       </View>
 
       {/* ================================================= */}
@@ -266,9 +368,7 @@ export default function ConductorScannerScreen() {
       {/* ================================================= */}
 
       <View style={styles.todayCard}>
-
         <View style={styles.todayLeft}>
-
           <Text style={styles.todayIcon}>
             ◉
           </Text>
@@ -284,21 +384,18 @@ export default function ConductorScannerScreen() {
           <Text style={styles.todayValidated}>
             Validated
           </Text>
-
         </View>
 
         <Text style={styles.scanSpeed}>
           ◷ 0.3s Auto-Scan
         </Text>
-
       </View>
 
       {/* ================================================= */}
-      {/* CAMERA AREA */}
+      {/* CAMERA */}
       {/* ================================================= */}
 
       <View style={styles.cameraContainer}>
-
         <CameraView
           style={styles.camera}
           facing="back"
@@ -307,30 +404,20 @@ export default function ConductorScannerScreen() {
             barcodeTypes: ['qr'],
           }}
           onBarcodeScanned={
-            scanned
+            scanned || validating
               ? undefined
               : handleBarcodeScanned
           }
         >
-
-          {/* Scan instruction */}
-
           {!scanned && (
             <View style={styles.instructionContainer}>
-
-              <Text
-                style={styles.instructionText}
-              >
+              <Text style={styles.instructionText}>
                 Align QR code within the frame
               </Text>
-
             </View>
           )}
 
-          {/* Scan frame */}
-
           <View style={styles.scanFrame}>
-
             <View
               style={[
                 styles.corner,
@@ -360,15 +447,10 @@ export default function ConductorScannerScreen() {
             />
 
             <View style={styles.scanLine} />
-
           </View>
 
-          {/* Camera bottom controls */}
-
           <View style={styles.cameraBottom}>
-
             <View style={styles.afLocked}>
-
               <Text style={styles.afIcon}>
                 ◎
               </Text>
@@ -376,40 +458,28 @@ export default function ConductorScannerScreen() {
               <Text style={styles.afText}>
                 AF LOCKED
               </Text>
-
             </View>
 
             <View style={styles.brightness}>
-
               <Text style={styles.sunIcon}>
                 ☼
               </Text>
 
-              <View
-                style={styles.brightnessTrack}
-              >
-                <View
-                  style={styles.brightnessThumb}
-                />
+              <View style={styles.brightnessTrack}>
+                <View style={styles.brightnessThumb} />
               </View>
-
             </View>
-
           </View>
-
         </CameraView>
-
       </View>
 
       {/* ================================================= */}
-      {/* SCAN RESULT */}
+      {/* SCANNED RESULT */}
       {/* ================================================= */}
 
       {scanned && (
         <View style={styles.resultCard}>
-
           <View style={styles.resultHeader}>
-
             <View style={styles.successCircle}>
               <Text style={styles.successIcon}>
                 ✓
@@ -418,20 +488,22 @@ export default function ConductorScannerScreen() {
 
             <View style={styles.resultHeaderText}>
               <Text style={styles.resultTitle}>
-                QR Code Detected
+                {scanMethod === 'QR'
+                  ? 'QR Code Detected'
+                  : 'Ticket ID Entered'}
               </Text>
 
               <Text style={styles.resultSubtitle}>
                 Ticket ready for validation
               </Text>
             </View>
-
           </View>
 
           <View style={styles.resultDataBox}>
-
             <Text style={styles.resultLabel}>
-              SCANNED DATA
+              {scanMethod === 'QR'
+                ? 'SCANNED DATA'
+                : 'TICKET ID'}
             </Text>
 
             <Text
@@ -440,54 +512,61 @@ export default function ConductorScannerScreen() {
             >
               {scannedData}
             </Text>
-
           </View>
 
           <View style={styles.resultButtons}>
-
             <Pressable
-              style={styles.validateButton}
-              onPress={() => {
-                Alert.alert(
-                  'Ticket Scanned',
-                  `Ticket data:\n${scannedData}`,
-                );
-              }}
+              style={[
+                styles.validateButton,
+                validating &&
+                  styles.disabledButton,
+              ]}
+              onPress={handleValidateTicket}
+              disabled={validating}
             >
-              <Text
-                style={styles.validateButtonText}
-              >
-                VALIDATE TICKET
-              </Text>
+              {validating ? (
+                <View style={styles.validatingContainer}>
+                  <ActivityIndicator
+                    size="small"
+                    color="#FFFFFF"
+                  />
+
+                  <Text style={styles.validateButtonText}>
+                    VALIDATING...
+                  </Text>
+                </View>
+              ) : (
+                <Text style={styles.validateButtonText}>
+                  VALIDATE TICKET
+                </Text>
+              )}
             </Pressable>
 
             <Pressable
-              style={styles.scanAgainButton}
+              style={[
+                styles.scanAgainButton,
+                validating &&
+                  styles.disabledSecondaryButton,
+              ]}
               onPress={scanAgain}
+              disabled={validating}
             >
-              <Text
-                style={styles.scanAgainText}
-              >
+              <Text style={styles.scanAgainText}>
                 SCAN AGAIN
               </Text>
             </Pressable>
-
           </View>
-
         </View>
       )}
 
       {/* ================================================= */}
-      {/* MANUAL TICKET */}
+      {/* MANUAL INPUT */}
       {/* ================================================= */}
 
       {!scanned && (
         <View style={styles.manualSection}>
-
           <View style={styles.manualHeader}>
-
             <View style={styles.manualTitleRow}>
-
               <Text style={styles.ticketIcon}>
                 ▣
               </Text>
@@ -495,17 +574,14 @@ export default function ConductorScannerScreen() {
               <Text style={styles.manualTitle}>
                 Manual Ticket ID
               </Text>
-
             </View>
 
             <Text style={styles.offlineText}>
               Offline Sync Ready
             </Text>
-
           </View>
 
           <View style={styles.manualInputRow}>
-
             <TextInput
               style={styles.manualInput}
               placeholder="Enter ticket ID"
@@ -514,23 +590,24 @@ export default function ConductorScannerScreen() {
               onChangeText={setManualTicketId}
               autoCapitalize="characters"
               autoCorrect={false}
+              editable={!validating}
+              onSubmitEditing={
+                handleManualTicket
+              }
             />
 
             <Pressable
               style={styles.manualSubmit}
               onPress={handleManualTicket}
+              disabled={validating}
             >
-              <Text
-                style={styles.manualSubmitText}
-              >
+              <Text style={styles.manualSubmitText}>
                 →
               </Text>
             </Pressable>
-
           </View>
 
           <View style={styles.recentRow}>
-
             <Text style={styles.recentLabel}>
               RECENT:
             </Text>
@@ -553,22 +630,26 @@ export default function ConductorScannerScreen() {
                 styles.failedChip,
               ]}
             >
-              <Text
-                style={styles.failedChipText}
-              >
+              <Text style={styles.failedChipText}>
                 #9479-A ×
               </Text>
             </View>
 
-            <Text style={styles.logText}>
-              Log ›
-            </Text>
-
+            <Pressable
+              style={styles.logButton}
+              onPress={() =>
+                router.push(
+                  '/conductor/recent-scans',
+                )
+              }
+            >
+              <Text style={styles.logText}>
+                Log ›
+              </Text>
+            </Pressable>
           </View>
-
         </View>
       )}
-
     </SafeAreaView>
   );
 }
@@ -578,7 +659,6 @@ export default function ConductorScannerScreen() {
 // ======================================================
 
 const styles = StyleSheet.create({
-
   container: {
     flex: 1,
     backgroundColor: '#0D1428',
@@ -866,7 +946,8 @@ const styles = StyleSheet.create({
 
   instructionText: {
     color: '#E9EDF7',
-    backgroundColor: 'rgba(18, 25, 44, 0.75)',
+    backgroundColor:
+      'rgba(18, 25, 44, 0.75)',
     paddingHorizontal: 18,
     paddingVertical: 10,
     borderRadius: 20,
@@ -941,7 +1022,8 @@ const styles = StyleSheet.create({
     height: 36,
     paddingHorizontal: 13,
     borderRadius: 18,
-    backgroundColor: 'rgba(20, 31, 55, 0.85)',
+    backgroundColor:
+      'rgba(20, 31, 55, 0.85)',
     flexDirection: 'row',
     alignItems: 'center',
   },
@@ -962,7 +1044,8 @@ const styles = StyleSheet.create({
     height: 36,
     paddingHorizontal: 10,
     borderRadius: 18,
-    backgroundColor: 'rgba(20, 31, 55, 0.85)',
+    backgroundColor:
+      'rgba(20, 31, 55, 0.85)',
     flexDirection: 'row',
     alignItems: 'center',
   },
@@ -991,7 +1074,7 @@ const styles = StyleSheet.create({
   },
 
   // ====================================================
-  // MANUAL TICKET
+  // MANUAL INPUT
   // ====================================================
 
   manualSection: {
@@ -1103,11 +1186,14 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 
+  logButton: {
+    marginLeft: 'auto',
+  },
+
   logText: {
     color: '#087F80',
     fontSize: 11,
     fontWeight: '800',
-    marginLeft: 'auto',
   },
 
   // ====================================================
@@ -1199,6 +1285,20 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
 
+  validatingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+
+  disabledButton: {
+    opacity: 0.65,
+  },
+
+  disabledSecondaryButton: {
+    opacity: 0.5,
+  },
+
   scanAgainButton: {
     width: 120,
     height: 48,
@@ -1214,5 +1314,4 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '800',
   },
-
 });
