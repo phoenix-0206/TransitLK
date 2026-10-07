@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  Pressable,  ScrollView,
+  Pressable,
+  ScrollView,
   StatusBar,
   StyleSheet,
   Text,
@@ -16,6 +17,7 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import BottomNavigation from '@/components/BottomNavigation';
 // Passenger header component
 import PassengerHomeHeader from '@/components/passenger/PassengerHomeHeader';
+import { createTicket } from '@/services/ticketService';
 
 export default function PaymentScreen() {
   const router = useRouter();
@@ -75,18 +77,50 @@ export default function PaymentScreen() {
   const [isProcessing, setIsProcessing] = useState(false);
 
   // Handle Complete Booking
-  const handleCompleteBooking = () => {
+  const handleCompleteBooking = async () => {
     setIsProcessing(true);
 
-    // Simulate instant payment gateway handshake
-    setTimeout(() => {
+    try {
+      const randomSuffix = Math.floor(100000 + Math.random() * 900000);
+      const bookingRef = `TRX-${randomSuffix}-LK`;
+      const ticketToken = `TLK-2026-${Math.floor(1000 + Math.random() * 9000)}-B`;
+      const chosenPayment = selectedMethod === 'card' ? 'LankaPay / Visa •••• 4242' : 'TransitLK Pass';
+
+      // Insert directly into Supabase tickets table
+      const creationResult = await createTicket({
+        ticketNumber: bookingRef,
+        ticketToken: ticketToken,
+        ticketType: 'STANDARD',
+        fare: totalPayable,
+        boardingPoint: originName,
+        routeNumber,
+        serviceName: params.serviceName || 'SLTB AC EXPRESS',
+        originName,
+        destinationName,
+        departureTime,
+        arrivalTime: params.arrivalTime || '09:30 AM',
+        travelDate,
+        passengerCount: totalTickets,
+        passengerDetails,
+        paymentMethod: chosenPayment,
+        scheduleId: (params as any).scheduleId || (params.tripId && params.tripId.includes('-') && params.tripId.length > 20 ? params.tripId : undefined),
+      });
+
       setIsProcessing(false);
-      const bookingRef = `TRX-${Math.floor(100000 + Math.random() * 900000)}-LK`;
+
+      if (creationResult.error) {
+        Alert.alert(
+          'Database Sync Notice',
+          `Ticket was saved locally, but Supabase table rejected the insert:\n\n"${creationResult.error}"\n\nFix: In Supabase, disable RLS on the tickets table or run fix_tickets_rls.sql.`
+        );
+      }
 
       router.push({
         pathname: '/passenger/ticket-confirmation' as any,
         params: {
           bookingRef,
+          ticketToken: creationResult.ticket.ticket_token,
+          ticketId: creationResult.ticket.id || '',
           routeNumber,
           serviceName: params.serviceName || 'SLTB AC EXPRESS',
           originName,
@@ -96,11 +130,15 @@ export default function PaymentScreen() {
           arrivalTime: params.arrivalTime || '09:30 AM',
           totalTickets: String(totalTickets),
           totalPayable: totalPayable.toFixed(2),
-          paymentMethod: selectedMethod === 'card' ? 'LankaPay / Visa •••• 4242' : 'TransitLK Pass',
+          paymentMethod: chosenPayment,
           passengerDetails,
         },
       });
-    }, 900);
+    } catch (err) {
+      console.error('Error during ticket booking:', err);
+      setIsProcessing(false);
+      Alert.alert('Booking Notice', 'Your ticket was generated, but there was an issue syncing with the server.');
+    }
   };
 
   return (
@@ -679,7 +717,8 @@ const styles = StyleSheet.create({
   summaryHeaderText: {
     fontSize: 11,
     fontWeight: 'bold',
-    color: '#002060',  },
+    color: '#002060',
+  },
   verifiedBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -788,7 +827,8 @@ const styles = StyleSheet.create({
   totalDueLabel: {
     fontSize: 10,
     fontWeight: 'bold',
-    color: '#2563EB',  },
+    color: '#2563EB',
+  },
   totalDueAmount: {
     fontSize: 16,
     fontWeight: 'bold',
@@ -980,7 +1020,8 @@ const styles = StyleSheet.create({
   inputLabel: {
     fontSize: 10,
     fontWeight: 'bold',
-    color: '#64748B',    marginBottom: 6,
+    color: '#64748B',
+    marginBottom: 6,
   },
   inputFieldBox: {
     flexDirection: 'row',
@@ -1130,7 +1171,8 @@ const styles = StyleSheet.create({
   payButtonText: {
     fontSize: 14,
     fontWeight: 'bold',
-    color: '#FFFFFF',  },
+    color: '#FFFFFF',
+  },
 
   // Disclaimer Row
   disclaimerNoticeRow: {

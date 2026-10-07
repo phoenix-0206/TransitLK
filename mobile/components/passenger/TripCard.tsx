@@ -275,7 +275,8 @@ const styles = StyleSheet.create({
   selectedOptionBadgeText: {
     color: '#FFFFFF',
     fontSize: 10,
-    fontWeight: 'bold',  },
+    fontWeight: 'bold',
+  },
   tagBadge: {
     paddingHorizontal: 8,
     paddingVertical: 3,
@@ -317,7 +318,8 @@ const styles = StyleSheet.create({
   fareAmount: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#0F172A',  },
+    color: '#0F172A',
+  },
   fareType: {
     fontSize: 11,
     color: '#64748B',

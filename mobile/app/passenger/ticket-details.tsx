@@ -2,7 +2,8 @@ import React, { useState, useMemo } from 'react';
 import {
   Alert,
   Image,
-  Pressable,  ScrollView,
+  Pressable,
+  ScrollView,
   StatusBar,
   StyleSheet,
   Text,
@@ -890,7 +891,8 @@ const styles = StyleSheet.create({
   enRoutePillText: {
     color: '#FFFFFF',
     fontSize: 10,
-    fontWeight: 'bold',  },
+    fontWeight: 'bold',
+  },
   enRouteTitle: {
     fontSize: 14,
     fontWeight: 'bold',
@@ -1137,7 +1139,8 @@ const styles = StyleSheet.create({
   protectionTitle: {
     fontSize: 10,
     fontWeight: 'bold',
-    color: '#065F46',  },
+    color: '#065F46',
+  },
   protectionSubtitle: {
     fontSize: 10,
     color: '#047857',
@@ -1211,7 +1214,8 @@ const styles = StyleSheet.create({
   totalAmount: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#002060',  },
+    color: '#002060',
+  },
 
   // Offline Notice Card
   offlineNoticeCard: {
