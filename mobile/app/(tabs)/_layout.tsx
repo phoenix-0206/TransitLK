@@ -1,5 +1,6 @@
 import React from 'react';
 import { Tabs } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 
 export default function TabLayout() {
   return (
@@ -38,32 +39,6 @@ export default function TabLayout() {
           ),
         }}
       />
-      <Tabs.Screen
-         name="alerts"
-         options={{
-          title: 'Alerts',
-          headerShown: false,
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="notifications" size={size} color={color} />
-         ),
-       }}
-      />
-
-      <Tabs.Screen
-        name="more"
-        options={{
-         title: 'More',
-         headerShown: false,
-         tabBarIcon: ({ color, size }) => (
-            <Ionicons name="menu" size={size} color={color} />
-      ),
-      }}
-      />
-
-      <Tabs.Screen name="home" />
-      <Tabs.Screen name="index" />
-      <Tabs.Screen name="two" />
-      {/* Hidden screens that exist in (tabs) but shouldn't show a tab */}
     </Tabs>
     
   );

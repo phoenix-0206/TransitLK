@@ -37,6 +37,8 @@ export default function RootLayout() {
     if (!isReady) return;
 
     const inAuthGroup = segments[0] === '(tabs)';
+    const authOnlyScreens = ['login', 'signup', 'otp'];
+    const onAuthScreen = authOnlyScreens.includes(segments[0] as string);
 
     if (!launchSplashShown.current) {
       launchSplashShown.current = true;
@@ -49,7 +51,7 @@ export default function RootLayout() {
     if (segments[0] === 'index') return;
 
     if (!session && inAuthGroup) {
-      router.replace('/role-selection');
+      router.replace('/login');
     }
 
     // Already logged in and opens login/signup screens
@@ -84,6 +86,7 @@ export default function RootLayout() {
           headerTitleStyle: { fontWeight: 'bold' },
         }}
       >
+        <Stack.Screen name="index" options={{ headerShown: false }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="login" options={{ headerShown: false }} />
         <Stack.Screen name="signup" options={{ headerShown: false }} />

@@ -259,6 +259,7 @@ export default function HomeDashboardScreen() {
                 >
                   Smooth Flow
                 </Text>
+              </Text>
               <Ionicons name="radio-outline" size={14} color="#0D9488" />
               <Text style={styles.weatherText}>
                 {nearbyLoading ? 'Loading live bus feed…' : `${nearbyBuses.length} bus ${nearbyBuses.length === 1 ? 'location' : 'locations'} available`}
