@@ -187,29 +187,6 @@ export default function TimetableSchedulesScreen() {
           </View>
         ))}
 
-        {/* Night Owl Bus Schedule Banner */}
-        <View style={styles.nightOwlCard}>
-          <View style={styles.nightOwlHeader}>
-            <Ionicons name="moon-outline" size={20} color="#002060" />
-            <View style={{ marginLeft: 8 }}>
-              <Text style={styles.nightOwlTitle}>Night Owl Bus Schedule</Text>
-              <Text style={styles.nightOwlSub}>10:00 PM – 4:00 AM Services</Text>
-            </View>
-          </View>
-          <Text style={styles.nightOwlBody}>
-            Night services depart every 30 minutes from Bastian Mawatha Central Terminal to Maharagama & Homagama. Save timetables for offline travel during spotty connectivity along inland routes.
-          </Text>
-
-          <View style={styles.nightOwlActions}>
-            <TouchableOpacity style={styles.pdfBtn}>
-              <Ionicons name="download-outline" size={16} color="#002060" />
-              <Text style={styles.pdfBtnText}>Offline PDF (2.1 MB)</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.infoCircleBtn}>
-              <Ionicons name="information-circle-outline" size={20} color="#002060" />
-            </TouchableOpacity>
-          </View>
-        </View>
       </ScrollView>
     </SafeAreaView>
   );

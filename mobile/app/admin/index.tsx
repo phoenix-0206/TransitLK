@@ -14,21 +14,23 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
+import * as Location from 'expo-location';
 import { supabase } from '../../services/supabase';
 
-type TabType = 'profiles' | 'bus_locations' | 'bus_schedules' | 'saved_routes';
+type TabType = 'profiles' | 'bus_locations' | 'conductor_buses' | 'bus_schedules' | 'saved_routes';
 
 export default function AdminDashboardScreen() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [checkingAuth, setCheckingAuth] = useState(true);
 
   // CRUD State
-  const [activeTab, setActiveTab] = useState<TabType>('bus_locations');
+  const [activeTab, setActiveTab] = useState<TabType>('conductor_buses');
   const [dataList, setDataList] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [editingItem, setEditingItem] = useState<any | null>(null);
   const [formData, setFormData] = useState<any>({});
+  const [locatingGps, setLocatingGps] = useState(false);
 
   useEffect(() => {
     checkAdminAccess();
@@ -87,15 +89,57 @@ export default function AdminDashboardScreen() {
 
   async function handleSave() {
     try {
+      if (activeTab === 'bus_locations' && (formData.latitude == null || formData.longitude == null)) {
+        Alert.alert('GPS Location Required', 'Tap Get GPS Location before saving this live bus.');
+        return;
+      }
+
+      if (activeTab === 'bus_locations') {
+        const crowdingLevel = formData.crowding_level || 'Low';
+        if (!formData.bus_number?.trim() || !formData.route_name?.trim()) {
+          Alert.alert('Missing Details', 'Enter the bus number and route name before saving.');
+          return;
+        }
+        if (!['Low', 'Medium', 'High'].includes(crowdingLevel)) {
+          Alert.alert('Invalid Crowding Level', 'Use Low, Medium, or High.');
+          return;
+        }
+      }
+
+      if (activeTab === 'conductor_buses' &&
+        (!formData.owner_id?.trim() || !formData.bus_number?.trim() ||
+          !formData.vehicle_registration?.trim() || !formData.route_name?.trim())) {
+        Alert.alert('Missing Details', 'Enter the conductor UUID, bus number, vehicle registration, and route name.');
+        return;
+      }
+
+      const payload = activeTab === 'bus_locations'
+        ? {
+            bus_number: formData.bus_number.trim(),
+            route_name: formData.route_name.trim(),
+            latitude: Number(formData.latitude),
+            longitude: Number(formData.longitude),
+            eta_minutes: Number.isFinite(Number(formData.eta_minutes)) ? Number(formData.eta_minutes) : 0,
+            crowding_level: formData.crowding_level || 'Low',
+          }
+        : activeTab === 'conductor_buses'
+          ? {
+              owner_id: formData.owner_id.trim(),
+              bus_number: formData.bus_number.trim(),
+              vehicle_registration: formData.vehicle_registration.trim().toUpperCase(),
+              route_name: formData.route_name.trim(),
+            }
+          : formData;
+
       if (editingItem) {
         const { error } = await supabase
           .from(activeTab)
-          .update(formData)
+          .update(payload)
           .eq('id', editingItem.id);
         if (error) throw error;
         Alert.alert('Success', 'Record updated successfully');
       } else {
-        const { error } = await supabase.from(activeTab).insert([formData]);
+        const { error } = await supabase.from(activeTab).insert([payload]);
         if (error) throw error;
         Alert.alert('Success', 'Record created successfully');
       }
@@ -103,6 +147,32 @@ export default function AdminDashboardScreen() {
       fetchData();
     } catch (err: any) {
       Alert.alert('Save Failed', err.message);
+    }
+  }
+
+  async function getGpsLocation() {
+    setLocatingGps(true);
+    try {
+      const permission = await Location.requestForegroundPermissionsAsync();
+      if (!permission.granted) {
+        throw new Error('Location permission is required to add the bus GPS location.');
+      }
+      if (!(await Location.hasServicesEnabledAsync())) {
+        throw new Error('Turn on Location Services, then try again.');
+      }
+
+      const position = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.High,
+      });
+      setFormData((current: any) => ({
+        ...current,
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude,
+      }));
+    } catch (error) {
+      Alert.alert('Could Not Get GPS Location', error instanceof Error ? error.message : 'Please try again.');
+    } finally {
+      setLocatingGps(false);
     }
   }
 
@@ -137,6 +207,10 @@ export default function AdminDashboardScreen() {
     setModalVisible(true);
   }
 
+  function getTabLabel(tab: TabType) {
+    return tab === 'conductor_buses' ? 'Conductor GPS' : tab.replace('_', ' ');
+  }
+
   if (checkingAuth) {
     return (
       <View style={styles.centeredContainer}>
@@ -161,6 +235,7 @@ export default function AdminDashboardScreen() {
       <View style={styles.tabBar}>
         {[
           { key: 'bus_locations', label: 'Live Buses' },
+          { key: 'conductor_buses', label: 'Conductor GPS' },
           { key: 'bus_schedules', label: 'Timetables' },
           { key: 'profiles', label: 'Profiles' },
           { key: 'saved_routes', label: 'Saved Routes' },
@@ -199,6 +274,14 @@ export default function AdminDashboardScreen() {
                   <Text style={styles.cardTitle}>Bus {item.bus_number} - {item.route_name}</Text>
                   <Text style={styles.cardSub}>ETA: {item.eta_minutes} mins • Crowding: {item.crowding_level || 'Medium'}</Text>
                   <Text style={styles.cardSub}>Coords: {item.latitude}, {item.longitude}</Text>
+                </>
+              )}
+
+              {activeTab === 'conductor_buses' && (
+                <>
+                  <Text style={styles.cardTitle}>Bus {item.bus_number} - {item.vehicle_registration}</Text>
+                  <Text style={styles.cardSub}>{item.route_name}</Text>
+                  <Text style={styles.cardSub}>Conductor: {item.owner_id}</Text>
                 </>
               )}
 
@@ -243,7 +326,7 @@ export default function AdminDashboardScreen() {
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>
-                {editingItem ? 'Edit' : 'Create'} {activeTab.replace('_', ' ')}
+                {editingItem ? 'Edit' : 'Create'} {getTabLabel(activeTab)}
               </Text>
               <TouchableOpacity onPress={() => setModalVisible(false)}>
                 <Ionicons name="close" size={20} color="#002060" />
@@ -275,28 +358,68 @@ export default function AdminDashboardScreen() {
                     onChangeText={(val) => setFormData({ ...formData, eta_minutes: parseInt(val) || 0 })}
                     placeholder="5"
                   />
-                  <Text style={styles.label}>Latitude</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={String(formData.latitude || '')}
-                    keyboardType="numeric"
-                    onChangeText={(val) => setFormData({ ...formData, latitude: parseFloat(val) || 0 })}
-                    placeholder="6.9061"
-                  />
-                  <Text style={styles.label}>Longitude</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={String(formData.longitude || '')}
-                    keyboardType="numeric"
-                    onChangeText={(val) => setFormData({ ...formData, longitude: parseFloat(val) || 0 })}
-                    placeholder="79.8988"
-                  />
+                  <Text style={styles.label}>Bus GPS Location</Text>
+                  <TouchableOpacity
+                    style={styles.gpsLocationBtn}
+                    onPress={getGpsLocation}
+                    disabled={locatingGps}
+                  >
+                    {locatingGps ? (
+                      <ActivityIndicator size="small" color="#FFF" />
+                    ) : (
+                      <Ionicons name="navigate" size={17} color="#FFF" />
+                    )}
+                    <Text style={styles.gpsLocationBtnText}>
+                      {locatingGps ? 'Getting GPS Location...' : 'Get GPS Location'}
+                    </Text>
+                  </TouchableOpacity>
+                  <Text style={styles.locationStatus}>
+                    {formData.latitude != null && formData.longitude != null
+                      ? `Location selected: ${Number(formData.latitude).toFixed(5)}, ${Number(formData.longitude).toFixed(5)}`
+                      : 'Use the button to select the current bus location.'}
+                  </Text>
                   <Text style={styles.label}>Crowding Level</Text>
                   <TextInput
                     style={styles.input}
                     value={formData.crowding_level}
                     onChangeText={(val) => setFormData({ ...formData, crowding_level: val })}
                     placeholder="Low / Medium / High"
+                  />
+                </>
+              )}
+
+              {activeTab === 'conductor_buses' && (
+                <>
+                  <Text style={styles.formHint}>Register a bus for a conductor to share its live GPS location.</Text>
+                  <Text style={styles.label}>Conductor User UUID</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={formData.owner_id}
+                    onChangeText={(val) => setFormData({ ...formData, owner_id: val })}
+                    placeholder="Auth user UUID"
+                    autoCapitalize="none"
+                  />
+                  <Text style={styles.label}>Route / Bus Number</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={formData.bus_number}
+                    onChangeText={(val) => setFormData({ ...formData, bus_number: val })}
+                    placeholder="e.g. 138"
+                  />
+                  <Text style={styles.label}>Vehicle Registration</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={formData.vehicle_registration}
+                    onChangeText={(val) => setFormData({ ...formData, vehicle_registration: val.toUpperCase() })}
+                    placeholder="e.g. WP-ND-8422"
+                    autoCapitalize="characters"
+                  />
+                  <Text style={styles.label}>Route Name</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={formData.route_name}
+                    onChangeText={(val) => setFormData({ ...formData, route_name: val })}
+                    placeholder="e.g. Maharagama - Pettah"
                   />
                 </>
               )}
@@ -455,6 +578,10 @@ const styles = StyleSheet.create({
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
   modalTitle: { fontSize: 16, fontWeight: 'bold', color: '#002060' },
   label: { fontSize: 11, fontWeight: 'bold', color: '#0F172A', marginTop: 8, marginBottom: 4 },
+  formHint: { fontSize: 11, color: '#64748B', lineHeight: 16, marginBottom: 2 },
+  gpsLocationBtn: { backgroundColor: '#0D9488', minHeight: 42, borderRadius: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, marginTop: 2 },
+  gpsLocationBtnText: { color: '#FFF', fontSize: 13, fontWeight: 'bold' },
+  locationStatus: { color: '#64748B', fontSize: 11, lineHeight: 16, marginTop: 5 },
   input: { borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 8, paddingHorizontal: 10, height: 40, fontSize: 13, color: '#0F172A' },
   saveSubmitBtn: { backgroundColor: '#002060', height: 44, borderRadius: 8, justifyContent: 'center', alignItems: 'center', marginTop: 16 },
   saveSubmitText: { color: '#FFF', fontWeight: 'bold', fontSize: 14 },

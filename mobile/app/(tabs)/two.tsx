@@ -6,17 +6,11 @@ import {
 import { supabase } from '../../services/supabase';
 import type { BusSchedule, SavedRoute } from '../../types/database';
 
-const SAMPLE_SCHEDULES: BusSchedule[] = [
-  { id: '1', route_number: '138', origin: 'Maharagama', destination: 'Pettah', departure_time: '06:30 AM', arrival_time: '07:15 AM', frequency: 'Every 10 mins', bus_type: 'Normal',     is_active: true, created_at: '' },
-  { id: '2', route_number: '120', origin: 'Horana',     destination: 'Pettah', departure_time: '07:00 AM', arrival_time: '08:30 AM', frequency: 'Every 15 mins', bus_type: 'Normal',     is_active: true, created_at: '' },
-  { id: '3', route_number: '100', origin: 'Panadura',   destination: 'Pettah', departure_time: '06:15 AM', arrival_time: '07:15 AM', frequency: 'Every 12 mins', bus_type: 'Normal',     is_active: true, created_at: '' },
-  { id: '4', route_number: '255', origin: 'Kandy',      destination: 'Colombo', departure_time: '06:00 AM', arrival_time: '09:30 AM', frequency: 'Every 30 mins', bus_type: 'A/C Luxury', is_active: true, created_at: '' },
-];
-
 export default function TimetableScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [schedules, setSchedules] = useState<BusSchedule[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState('');
 
   useEffect(() => {
     fetchSchedules();
@@ -24,31 +18,24 @@ export default function TimetableScreen() {
 
   async function fetchSchedules(query = '') {
     setLoading(true);
-    let q = supabase.from('bus_schedules').select('*');
+    setLoadError('');
+    try {
+      let request = supabase.from('bus_schedules').select('*').eq('is_active', true);
+      if (query.trim() !== '') {
+        request = request.or(
+          `route_number.ilike.%${query}%,origin.ilike.%${query}%,destination.ilike.%${query}%`
+        );
+      }
 
-    if (query.trim() !== '') {
-      q = q.or(
-        `route_number.ilike.%${query}%,origin.ilike.%${query}%,destination.ilike.%${query}%`
-      );
+      const { data, error } = await request.returns<BusSchedule[]>();
+      if (error) throw error;
+      setSchedules(data ?? []);
+    } catch (error) {
+      setSchedules([]);
+      setLoadError(error instanceof Error ? error.message : 'Unable to load schedules.');
+    } finally {
+      setLoading(false);
     }
-
-    const { data, error } = await q.returns<BusSchedule[]>();
-
-    if (error || !data) {
-      // Filter sample data locally if DB not populated yet
-      const filtered = query.trim()
-        ? SAMPLE_SCHEDULES.filter(
-            (s) =>
-              s.route_number.includes(query) ||
-              s.origin.toLowerCase().includes(query.toLowerCase()) ||
-              s.destination.toLowerCase().includes(query.toLowerCase())
-          )
-        : SAMPLE_SCHEDULES;
-      setSchedules(filtered);
-    } else {
-      setSchedules(data);
-    }
-    setLoading(false);
   }
 
   async function handleBookmarkSchedule(schedule: BusSchedule) {
@@ -89,13 +76,20 @@ export default function TimetableScreen() {
 
       {loading ? (
         <ActivityIndicator size="large" color="#002060" style={{ marginTop: 30 }} />
+      ) : loadError ? (
+        <View style={styles.emptyState}>
+          <Text style={styles.emptyText}>Unable to load schedules</Text>
+          <Text style={styles.errorText}>{loadError}</Text>
+        </View>
       ) : (
         <FlatList<BusSchedule>
           data={schedules}
           keyExtractor={(item) => item.id}
           contentContainerStyle={{ paddingBottom: 24 }}
           ListEmptyComponent={
-            <Text style={styles.emptyText}>No routes found for "{searchQuery}"</Text>
+            <Text style={styles.emptyText}>
+              {searchQuery ? `No schedules found for "${searchQuery}"` : 'No active bus schedules have been added yet.'}
+            </Text>
           }
           renderItem={({ item }) => (
             <View style={styles.card}>
@@ -140,6 +134,8 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: '#DDD', fontSize: 14, color: '#333',
   },
   emptyText: { textAlign: 'center', color: '#888', marginTop: 40, fontSize: 14 },
+  emptyState: { alignItems: 'center', paddingHorizontal: 12 },
+  errorText: { textAlign: 'center', color: '#64748B', marginTop: 8, fontSize: 12 },
   card: {
     backgroundColor: '#FFF', padding: 15, borderRadius: 12,
     marginBottom: 12, borderWidth: 1, borderColor: '#E5E5EA', elevation: 2,
