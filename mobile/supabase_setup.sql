@@ -15,20 +15,27 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   created_at  TIMESTAMPTZ DEFAULT now(),
   updated_at  TIMESTAMPTZ DEFAULT now()
 );
+ALTER TABLE public.profiles
+  ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'commuter',
+  ADD COLUMN IF NOT EXISTS avatar_url TEXT,
+  ADD COLUMN IF NOT EXISTS pass_category TEXT DEFAULT 'regular';
 
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 
 -- Users can read their own profile
+DROP POLICY IF EXISTS "Users can view own profile" ON public.profiles;
 CREATE POLICY "Users can view own profile"
   ON public.profiles FOR SELECT
   USING (auth.uid() = id);
 
 -- Users can insert their own profile
+DROP POLICY IF EXISTS "Users can insert own profile" ON public.profiles;
 CREATE POLICY "Users can insert own profile"
   ON public.profiles FOR INSERT
   WITH CHECK (auth.uid() = id);
 
 -- Users can update their own profile
+DROP POLICY IF EXISTS "Users can update own profile" ON public.profiles;
 CREATE POLICY "Users can update own profile"
   ON public.profiles FOR UPDATE
   USING (auth.uid() = id);
@@ -65,11 +72,34 @@ CREATE TABLE IF NOT EXISTS public.bus_locations (
 );
 
 ALTER TABLE public.bus_locations ENABLE ROW LEVEL SECURITY;
+GRANT SELECT ON public.bus_locations TO anon, authenticated;
+GRANT INSERT, UPDATE, DELETE ON public.bus_locations TO authenticated;
 
 -- Bus locations are publicly readable (no auth needed for tracking)
+DROP POLICY IF EXISTS "Bus locations are publicly readable" ON public.bus_locations;
 CREATE POLICY "Bus locations are publicly readable"
   ON public.bus_locations FOR SELECT
   USING (true);
+
+DROP POLICY IF EXISTS "Admins manage bus locations" ON public.bus_locations;
+CREATE POLICY "Admins manage bus locations"
+  ON public.bus_locations FOR ALL TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1
+      FROM public.profiles
+      WHERE profiles.id = auth.uid()
+        AND profiles.role = 'admin'
+    )
+  )
+  WITH CHECK (
+    EXISTS (
+      SELECT 1
+      FROM public.profiles
+      WHERE profiles.id = auth.uid()
+        AND profiles.role = 'admin'
+    )
+  );
 
 -- ─────────────────────────────────────────────────────
 -- 3. BUS_SCHEDULES TABLE
@@ -98,6 +128,7 @@ NOTIFY pgrst, 'reload schema';
 ALTER TABLE public.bus_schedules ENABLE ROW LEVEL SECURITY;
 
 -- Schedules are publicly readable
+DROP POLICY IF EXISTS "Bus schedules are publicly readable" ON public.bus_schedules;
 CREATE POLICY "Bus schedules are publicly readable"
   ON public.bus_schedules FOR SELECT
   USING (true);
@@ -120,38 +151,25 @@ CREATE TABLE IF NOT EXISTS public.saved_routes (
 ALTER TABLE public.saved_routes ENABLE ROW LEVEL SECURITY;
 
 -- Users can read their own saved routes
+DROP POLICY IF EXISTS "Users can view own saved routes" ON public.saved_routes;
 CREATE POLICY "Users can view own saved routes"
   ON public.saved_routes FOR SELECT
   USING (auth.uid() = user_id);
 
 -- Users can insert their own saved routes
+DROP POLICY IF EXISTS "Users can insert own saved routes" ON public.saved_routes;
 CREATE POLICY "Users can insert own saved routes"
   ON public.saved_routes FOR INSERT
   WITH CHECK (auth.uid() = user_id);
 
 -- Users can delete their own saved routes
+DROP POLICY IF EXISTS "Users can delete own saved routes" ON public.saved_routes;
 CREATE POLICY "Users can delete own saved routes"
   ON public.saved_routes FOR DELETE
   USING (auth.uid() = user_id);
 
 -- ─────────────────────────────────────────────────────
--- 5. SEED DATA — Sri Lankan Bus Routes
--- ─────────────────────────────────────────────────────
-
--- Bus Locations (live tracking mock data)
-INSERT INTO public.bus_locations (bus_number, route_name, latitude, longitude, eta_minutes, crowding_level) VALUES
-  ('138',  'Maharagama - Pettah',   6.8480, 79.9265, 4,  'Medium'),
-  ('120',  'Horana - Pettah',       6.8700, 79.8800, 12, 'High'),
-  ('100',  'Panadura - Pettah',     6.8300, 79.8650, 8,  'Low'),
-  ('177',  'Kaduwela - Fort',       6.9320, 79.8830, 15, 'Medium'),
-  ('154',  'Kottawa - Pettah',      6.8420, 79.9610, 6,  'Low'),
-  ('255',  'Kandy - Colombo',       7.0800, 80.2200, 45, 'High'),
-  ('2',    'Matara - Colombo',      6.5600, 80.0500, 90, 'Medium'),
-  ('400',  'Negombo - Colombo',     7.0900, 79.8600, 25, 'Low')
-ON CONFLICT DO NOTHING;
-
--- ─────────────────────────────────────────────────────
--- 6. CONDUCTOR-REGISTERED BUSES AND LIVE PHONE GPS
+-- 5. CONDUCTOR-REGISTERED BUSES AND LIVE PHONE GPS
 -- Apply this updated setup script in the Supabase SQL Editor.
 -- ─────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS public.conductor_buses (
@@ -164,6 +182,16 @@ CREATE TABLE IF NOT EXISTS public.conductor_buses (
   UNIQUE (owner_id, vehicle_registration)
 );
 
+-- Upgrade installations that created this table before conductor GPS was added.
+ALTER TABLE public.conductor_buses
+  ADD COLUMN IF NOT EXISTS owner_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+  ADD COLUMN IF NOT EXISTS bus_number TEXT,
+  ADD COLUMN IF NOT EXISTS vehicle_registration TEXT,
+  ADD COLUMN IF NOT EXISTS route_name TEXT,
+  ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT now();
+ALTER TABLE public.conductor_buses
+  ALTER COLUMN owner_id SET DEFAULT auth.uid();
+
 ALTER TABLE public.conductor_buses ENABLE ROW LEVEL SECURITY;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.conductor_buses TO authenticated;
 
@@ -172,6 +200,26 @@ CREATE POLICY "Conductors manage their own bus registrations"
   ON public.conductor_buses FOR ALL TO authenticated
   USING (auth.uid() = owner_id)
   WITH CHECK (auth.uid() = owner_id);
+
+DROP POLICY IF EXISTS "Admins manage conductor bus registrations" ON public.conductor_buses;
+CREATE POLICY "Admins manage conductor bus registrations"
+  ON public.conductor_buses FOR ALL TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1
+      FROM public.profiles
+      WHERE profiles.id = auth.uid()
+        AND profiles.role = 'admin'
+    )
+  )
+  WITH CHECK (
+    EXISTS (
+      SELECT 1
+      FROM public.profiles
+      WHERE profiles.id = auth.uid()
+        AND profiles.role = 'admin'
+    )
+  );
 
 CREATE TABLE IF NOT EXISTS public.conductor_bus_locations (
   bus_id                UUID PRIMARY KEY REFERENCES public.conductor_buses(id) ON DELETE CASCADE,
@@ -185,6 +233,18 @@ CREATE TABLE IF NOT EXISTS public.conductor_bus_locations (
   speed_mps             DOUBLE PRECISION,
   updated_at            TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Upgrade installations that already have the live-location table.
+ALTER TABLE public.conductor_bus_locations
+  ADD COLUMN IF NOT EXISTS bus_number TEXT,
+  ADD COLUMN IF NOT EXISTS vehicle_registration TEXT,
+  ADD COLUMN IF NOT EXISTS route_name TEXT,
+  ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION,
+  ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION,
+  ADD COLUMN IF NOT EXISTS accuracy_meters DOUBLE PRECISION,
+  ADD COLUMN IF NOT EXISTS heading DOUBLE PRECISION,
+  ADD COLUMN IF NOT EXISTS speed_mps DOUBLE PRECISION,
+  ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now();
 
 ALTER TABLE public.conductor_bus_locations ENABLE ROW LEVEL SECURITY;
 GRANT SELECT ON public.conductor_bus_locations TO anon, authenticated;
@@ -230,19 +290,5 @@ CREATE POLICY "Conductors stop sharing their own bus locations"
       WHERE bus.id = bus_id AND bus.owner_id = auth.uid()
     )
   );
-
--- Bus Schedules (timetable mock data)
-INSERT INTO public.bus_schedules (route_number, origin, destination, departure_time, arrival_time, frequency, bus_type) VALUES
-  ('138',  'Maharagama',   'Pettah',    '05:30 AM', '06:15 AM', 'Every 10 mins', 'Normal'),
-  ('138',  'Maharagama',   'Pettah',    '06:30 AM', '07:15 AM', 'Every 10 mins', 'Semi-Luxury'),
-  ('120',  'Horana',       'Pettah',    '06:00 AM', '07:30 AM', 'Every 15 mins', 'Normal'),
-  ('120',  'Horana',       'Pettah',    '07:00 AM', '08:30 AM', 'Every 15 mins', 'Normal'),
-  ('100',  'Panadura',     'Pettah',    '05:45 AM', '06:45 AM', 'Every 12 mins', 'Normal'),
-  ('100',  'Panadura',     'Pettah',    '06:15 AM', '07:15 AM', 'Every 12 mins', 'Semi-Luxury'),
-  ('177',  'Kaduwela',     'Fort',      '06:00 AM', '06:50 AM', 'Every 20 mins', 'Normal'),
-  ('154',  'Kottawa',      'Pettah',    '06:00 AM', '06:40 AM', 'Every 8 mins',  'Normal'),
-  ('255',  'Kandy',        'Colombo',   '06:00 AM', '09:30 AM', 'Every 30 mins', 'A/C Luxury'),
-  ('255',  'Kandy',        'Colombo',   '07:00 AM', '10:30 AM', 'Every 30 mins', 'Normal'),
-  ('2',    'Matara',       'Colombo',   '05:00 AM', '09:00 AM', 'Every 45 mins', 'A/C Luxury'),
-  ('400',  'Negombo',      'Colombo',   '06:00 AM', '07:00 AM', 'Every 15 mins', 'Normal')
-ON CONFLICT DO NOTHING;
+-- Live bus and timetable rows are created through app workflows, not demo seeds.
+NOTIFY pgrst, 'reload schema';

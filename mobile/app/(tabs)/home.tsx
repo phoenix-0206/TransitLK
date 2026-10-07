@@ -259,14 +259,15 @@ export default function HomeDashboardScreen() {
                 >
                   Smooth Flow
                 </Text>
+              <Ionicons name="radio-outline" size={14} color="#0D9488" />
+              <Text style={styles.weatherText}>
+                {nearbyLoading ? 'Loading live bus feed…' : `${nearbyBuses.length} bus ${nearbyBuses.length === 1 ? 'location' : 'locations'} available`}
               </Text>
             </View>
           </View>
 
           <View style={styles.gpsPill}>
-            <Text style={styles.gpsPillText}>
-              ● GPS Live
-            </Text>
+            <Text style={styles.gpsPillText}>{nearbyLoading ? 'LOADING' : nearbyBuses.length ? 'BUS FEED LIVE' : 'NO LIVE FEED'}</Text>
           </View>
         </View>
 
@@ -320,9 +321,8 @@ export default function HomeDashboardScreen() {
                 WP CORRIDOR NET
               </Text>
             </View>
-
             <Text style={styles.heroActiveText}>
-              ● 120+ Active Lines
+              {nearbyLoading ? 'Loading live buses…' : `● ${nearbyBuses.length} Live ${nearbyBuses.length === 1 ? 'Bus' : 'Buses'}`}
             </Text>
           </View>
 
@@ -331,42 +331,26 @@ export default function HomeDashboardScreen() {
           </Text>
 
           <Text style={styles.heroSub}>
-            Real-time telemetry across Western Province rail & SLTB commuter routes.
+            View bus locations currently shared by admins and conductors.
           </Text>
 
           <View style={styles.chipRow}>
-            <View style={styles.routeChip}>
-              <Text style={styles.routeChipText}>
-                ● 138 Pettah
-              </Text>
-            </View>
-
-            <View style={styles.routeChip}>
-              <Text style={styles.routeChipText}>
-                ● 177 Kollupitiya
-              </Text>
-            </View>
-
-            <View style={styles.routeChip}>
-              <Text style={styles.routeChipText}>
-                ● Coastal Line
-              </Text>
-            </View>
+            {nearbyBuses.slice(0, 3).map((bus) => (
+              <View key={bus.bus_id} style={styles.routeChip}>
+                <Text style={styles.routeChipText} numberOfLines={1}>● {bus.bus_number} {bus.route_name}</Text>
+              </View>
+            ))}
+            {!nearbyLoading && nearbyBuses.length === 0 && (
+              <Text style={styles.heroSub}>{nearbyError || 'No live bus locations available.'}</Text>
+            )}
           </View>
 
           <TouchableOpacity
             style={styles.heroBtn}
             onPress={() => router.push('/')}
           >
-            <Text style={styles.heroBtnText}>
-              View Live Conductor GPS
-            </Text>
-
-            <Ionicons
-              name="arrow-forward"
-              size={16}
-              color="#FFF"
-            />
+            <Text style={styles.heroBtnText}>View Live Buses</Text>
+            <Ionicons name="arrow-forward" size={16} color="#FFF" />
           </TouchableOpacity>
         </View>
 
@@ -386,52 +370,27 @@ export default function HomeDashboardScreen() {
           </View>
 
           <View style={styles.lankaPayPill}>
-            <Text style={styles.lankaPayText}>
-              LankaPay Auto
-            </Text>
+            <Text style={styles.lankaPayText}>{isAuthenticated ? 'ACCOUNT' : 'SIGN IN'}</Text>
           </View>
         </View>
 
         <View style={styles.walletCard}>
           <View style={styles.walletCardHeader}>
-            <Text style={styles.tripStatusText}>
-              ● ACTIVE TRIP: IN TRANSIT
-            </Text>
-
-            <Text style={styles.fareText}>
-              Fare: LKR 70.00
-            </Text>
+            <Text style={styles.tripStatusText}>SMARTPASS STATUS</Text>
+            <Text style={styles.fareText}>{isAuthenticated ? 'Balance unavailable' : 'Sign-in required'}</Text>
           </View>
-
           <Text style={styles.stationText}>
-            Bambalapitiya ➔ Colombo Fort
+            {isAuthenticated ? 'Pass and trip details are not available from the current backend.' : 'Sign in to view your account details.'}
           </Text>
 
           <View style={styles.walletMidRow}>
             <View>
-              <Text style={styles.balanceLabel}>
-                Balance:
-              </Text>
-
-              <Text style={styles.balanceValue}>
-                LKR 1,450.00
-              </Text>
-
+              <Text style={styles.balanceLabel}>Stored balance</Text>
+              <Text style={styles.balanceValue}>Not available</Text>
               <Text style={styles.tokenText}>
-                TOKEN: SEC-8824-LK{' '}
-
-                <Text
-                  style={{
-                    color: '#0D9488',
-                    fontWeight: 'bold',
-                  }}
-                >
-                  Tap & Ride
-                </Text>
+                QR pass data is not configured.
               </Text>
             </View>
-
-            {/* Simulated QR Code */}
 
             <TouchableOpacity
               style={styles.qrBox}
@@ -443,15 +402,8 @@ export default function HomeDashboardScreen() {
                 }
               }}
             >
-              <Ionicons
-                name="qr-code"
-                size={42}
-                color="#002060"
-              />
-
-              <Text style={styles.qrSub}>
-                Tap to Zoom
-              </Text>
+              <Ionicons name="person-circle-outline" size={38} color="#002060" />
+              <Text style={styles.qrSub}>Open account</Text>
             </TouchableOpacity>
           </View>
 
@@ -466,29 +418,8 @@ export default function HomeDashboardScreen() {
                 }
               }}
             >
-              <Ionicons
-                name="qr-code-outline"
-                size={16}
-                color="#FFF"
-              />
-
-              <Text style={styles.passBtnPrimaryText}>
-                Show QR Pass
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.passBtnSecondary}
-            >
-              <Ionicons
-                name="add-circle-outline"
-                size={16}
-                color="#002060"
-              />
-
-              <Text style={styles.passBtnSecondaryText}>
-                Top-Up (LankaQR)
-              </Text>
+              <Ionicons name="person-outline" size={16} color="#FFF" />
+              <Text style={styles.passBtnPrimaryText}>Open Pass Profile</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -709,102 +640,43 @@ export default function HomeDashboardScreen() {
               Saved Routes
             </Text>
           </View>
-
-          <TouchableOpacity
-            style={styles.addRouteBtn}
-          >
-            <Text style={styles.addRouteText}>
-              + Add Route
-            </Text>
+          <TouchableOpacity style={styles.addRouteBtn} onPress={() => router.push('/timetable-schedules')}>
+            <Text style={styles.addRouteText}>+ Add Route</Text>
           </TouchableOpacity>
         </View>
 
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.savedScroll}
-        >
-          {/* Show saved routes from Supabase, or fallback to static data */}
-
-          {(savedRoutes.length > 0
-            ? savedRoutes
-            : [
-                {
-                  id: '1',
-                  route_number: '138',
-                  origin: 'Fort',
-                  destination: 'Maharagama',
-                  user_id: '',
-                  created_at: '',
-                },
-                {
-                  id: '2',
-                  route_number: '177',
-                  origin: 'Kollupitiya',
-                  destination: '...',
-                  user_id: '',
-                  created_at: '',
-                },
-              ]
-          ).map((route, idx) => (
-            <TouchableOpacity
-              key={route.id || idx}
-              style={styles.savedCard}
-              activeOpacity={0.7}
-              onPress={() =>
-                router.push(
-                  '/timetable-schedules'
-                )
-              }
-            >
-              <View style={styles.savedTop}>
-                <View style={styles.savedBadge}>
-                  <Text
-                    style={styles.savedBadgeText}
-                  >
-                    {route.route_number}
-                  </Text>
-                </View>
-
-                {idx === 0 && (
-                  <View style={styles.freqPill}>
-                    <Text style={styles.freqText}>
-                      Every 4m
-                    </Text>
+        {savedRoutes.length === 0 ? (
+          <View style={styles.nearbyEmpty}>
+            <Text style={styles.nearbyEmptyText}>No saved routes yet. Add one from Timetables.</Text>
+          </View>
+        ) : (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.savedScroll}>
+            {savedRoutes.map((route) => (
+              <TouchableOpacity
+                key={route.id}
+                style={styles.savedCard}
+                activeOpacity={0.7}
+                onPress={() => router.push('/timetable-schedules')}
+              >
+                <View style={styles.savedTop}>
+                  <View style={styles.savedBadge}>
+                    <Text style={styles.savedBadgeText}>{route.route_number}</Text>
                   </View>
-                )}
-              </View>
-
-              <Text style={styles.savedRouteText}>
-                {route.origin} ⇄ {route.destination}
-              </Text>
-
-              <Text style={styles.savedSub}>
-                {idx === 0
-                  ? 'Morning Office Commute'
-                  : 'Evening Return Route'}
-              </Text>
-
-              <View style={styles.savedFooter}>
-                {idx === 0 ? (
-                  <>
-                    <Text style={styles.trafficText}>
-                      ✓ Normal Traffic
-                    </Text>
-
-                    <Text style={styles.trackLink}>
-                      Track ›
-                    </Text>
-                  </>
-                ) : (
-                  <Text style={styles.jamText}>
-                    ⚠️ Rajagiriya Jam
-                  </Text>
-                )}
-              </View>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
+                  <View style={styles.freqPill}>
+                    <Text style={styles.freqText}>SAVED</Text>
+                  </View>
+                </View>
+                <Text style={styles.savedRouteText}>
+                  {route.origin || 'Origin'} ⇄ {route.destination || 'Destination'}
+                </Text>
+                <Text style={styles.savedSub}>Saved route</Text>
+                <View style={styles.savedFooter}>
+                  <Text style={styles.trackLink}>View timetable ›</Text>
+                </View>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        )}
 
         {/* ═══ Commuter Services Grid ═══ */}
 
@@ -814,66 +686,26 @@ export default function HomeDashboardScreen() {
 
         <View style={styles.servicesGrid}>
           {([
-            {
-              icon: 'map-outline',
-              label: 'Live Bus Map',
-              bg: '#EEF2FF',
-              color: '#002060',
-              route: '/',
-            },
-            {
-              icon: 'calendar-outline' as const,
-              label: 'Timetables',
-              bg: '#CCFBF1',
-              color: '#0D9488',
-              route: '/timetable-schedules',
-            },
-            {
-              icon: 'calculator-outline' as const,
-              label: 'Fare Finder',
-              bg: '#EEF2FF',
-              color: '#002060',
-              route: '/timetable-schedules',
-            },
-            {
-              icon: 'navigate-outline' as const,
-              label: 'Conductor GPS',
-              bg: '#CCFBF1',
-              color: '#0D9488',
-              route: '/conductor',
-            },
-          ] as const).map(
-            (item, idx) => (
-              <TouchableOpacity
-                key={idx}
-                style={styles.serviceItem}
-                onPress={() => {
-                  if (item.route) {
-                    router.push(item.route);
-                  }
-                }}
-              >
-                <View
-                  style={[
-                    styles.serviceCircle,
-                    {
-                      backgroundColor: item.bg,
-                    },
-                  ]}
-                >
-                  <Ionicons
-                    name={item.icon}
-                    size={20}
-                    color={item.color}
-                  />
-                </View>
-
-                <Text style={styles.serviceLabel}>
-                  {item.label}
-                </Text>
-              </TouchableOpacity>
-            )
-          )}
+            { icon: 'map-outline', label: 'Live Bus Map', bg: '#EEF2FF', color: '#002060', route: '/' },
+            { icon: 'calendar-outline' as const, label: 'Timetables', bg: '#CCFBF1', color: '#0D9488', route: '/timetable-schedules' },
+            { icon: 'search-outline' as const, label: 'Route Search', bg: '#EEF2FF', color: '#002060', route: '/timetable-schedules' },
+            { icon: 'navigate-outline' as const, label: 'Conductor GPS', bg: '#CCFBF1', color: '#0D9488', route: '/conductor' },
+          ] as const).map((item, idx) => (
+            <TouchableOpacity
+              key={idx}
+              style={styles.serviceItem}
+              onPress={() => {
+                if (item.route) {
+                  router.push(item.route);
+                }
+              }}
+            >
+              <View style={[styles.serviceCircle, { backgroundColor: item.bg }]}>
+                <Ionicons name={item.icon} size={20} color={item.color} />
+              </View>
+              <Text style={styles.serviceLabel}>{item.label}</Text>
+            </TouchableOpacity>
+          ))}
         </View>
 
         {/* ═══ Major Advisory Card ═══ */}
@@ -885,17 +717,13 @@ export default function HomeDashboardScreen() {
         >
           <View style={styles.advisoryOverlay}>
             <View style={styles.advisoryTag}>
-              <Text style={styles.advisoryTagText}>
-                MAJOR HUB ADVISORY
-              </Text>
+              <Text style={styles.advisoryTagText}>LIVE BUS LOCATIONS</Text>
             </View>
-
             <Text style={styles.advisoryTitle}>
-              Fort Central Multi–Modal Terminal
+              {nearbyBuses.length} bus {nearbyBuses.length === 1 ? 'location' : 'locations'} available
             </Text>
-
             <Text style={styles.advisorySub}>
-              Normal interchange between Railway Platforms 1–8 & Central Bus Stand
+              {nearbyError || (nearbyBuses.length ? 'Open the map to view current shared bus positions.' : 'No buses are currently sharing a location.')}
             </Text>
           </View>
         </TouchableOpacity>
@@ -927,7 +755,7 @@ export default function HomeDashboardScreen() {
                 </Text>
 
                 <Text style={styles.authBannerSub}>
-                  Save routes, use Smart Pass QR, receive real-time alerts
+                  Save routes and review your account profile
                 </Text>
               </View>
 

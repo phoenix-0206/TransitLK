@@ -1,508 +1,83 @@
 import React from 'react';
+import { Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { router } from 'expo-router';
 
-import {
-  Alert,
-  Pressable,
-  SafeAreaView,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
-
-import { useRouter } from 'expo-router';
-
-import { supabase } from '../../services/supabase';
+const conductor = {
+	name: 'Sunil Perera',
+	badgeId: '#7842',
+	position: 'Senior Conductor',
+	depot: 'Pettah Central',
+	shift: '06:00 - 14:30',
+};
 
 export default function ConductorProfileScreen() {
-  const router = useRouter();
-
-  // Temporary data.
-  // Later this can be loaded from conductor_profiles.
-  const conductor = {
-    name: 'Sunil Perera',
-    initials: 'SP',
-    role: 'Senior Conductor',
-    badgeId: '#7842',
-    position: 'Senior Conductor',
-    depot: 'Pettah Central',
-    shift: '06:00 - 14:30',
-    status: 'Active',
-  };
-
-  // ================= LOGOUT =================
-
-  const handleLogout = () => {
-    Alert.alert(
-      'Logout',
-      'Are you sure you want to logout?',
-      [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
-        {
-          text: 'Logout',
-          style: 'destructive',
-          onPress: async () => {
-            const { error } = await supabase.auth.signOut();
-
-            if (error) {
-              Alert.alert(
-                'Logout Failed',
-                error.message
-              );
-              return;
-            }
-
-            // Return to role selection after logout
-            router.replace('/role-selection');
-          },
-        },
-      ]
-    );
-  };
-
-  return (
-    <SafeAreaView style={styles.container}>
-      <ScrollView
-        contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}
-      >
-
-        {/* ================= HEADER ================= */}
-
-        <View style={styles.header}>
-
-          <Pressable
-            style={styles.backButton}
-            onPress={() => router.back()}
-          >
-            <Text style={styles.backIcon}>
-              ←
-            </Text>
-          </Pressable>
-
-          <Text style={styles.headerTitle}>
-            Profile
-          </Text>
-
-          <View style={styles.headerSpace} />
-
-        </View>
-
-        {/* ================= PROFILE CARD ================= */}
-
-        <View style={styles.profileCard}>
-
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>
-              {conductor.initials}
-            </Text>
-          </View>
-
-          <Text style={styles.name}>
-            {conductor.name}
-          </Text>
-
-          <Text style={styles.role}>
-            {conductor.role}
-          </Text>
-
-          <View style={styles.activeBadge}>
-
-            <View style={styles.activeDot} />
-
-            <Text style={styles.activeText}>
-              {conductor.status}
-            </Text>
-
-          </View>
-
-        </View>
-
-        {/* ================= DETAILS ================= */}
-
-        <Text style={styles.sectionTitle}>
-          Conductor Details
-        </Text>
-
-        <View style={styles.detailsCard}>
-
-          {/* Badge ID */}
-
-          <View style={styles.detailRow}>
-
-            <View style={styles.detailIcon}>
-              <Text style={styles.iconText}>
-                ▣
-              </Text>
-            </View>
-
-            <View style={styles.detailContent}>
-
-              <Text style={styles.detailLabel}>
-                Badge ID
-              </Text>
-
-              <Text style={styles.detailValue}>
-                {conductor.badgeId}
-              </Text>
-
-            </View>
-
-          </View>
-
-          <View style={styles.line} />
-
-          {/* Position */}
-
-          <View style={styles.detailRow}>
-
-            <View style={styles.detailIcon}>
-              <Text style={styles.iconText}>
-                ◆
-              </Text>
-            </View>
-
-            <View style={styles.detailContent}>
-
-              <Text style={styles.detailLabel}>
-                Position
-              </Text>
-
-              <Text style={styles.detailValue}>
-                {conductor.position}
-              </Text>
-
-            </View>
-
-          </View>
-
-          <View style={styles.line} />
-
-          {/* Depot */}
-
-          <View style={styles.detailRow}>
-
-            <View style={styles.detailIcon}>
-              <Text style={styles.iconText}>
-                ⌂
-              </Text>
-            </View>
-
-            <View style={styles.detailContent}>
-
-              <Text style={styles.detailLabel}>
-                Depot
-              </Text>
-
-              <Text style={styles.detailValue}>
-                {conductor.depot}
-              </Text>
-
-            </View>
-
-          </View>
-
-          <View style={styles.line} />
-
-          {/* Shift */}
-
-          <View style={styles.detailRow}>
-
-            <View style={styles.detailIcon}>
-              <Text style={styles.iconText}>
-                ◷
-              </Text>
-            </View>
-
-            <View style={styles.detailContent}>
-
-              <Text style={styles.detailLabel}>
-                Current Shift
-              </Text>
-
-              <Text style={styles.detailValue}>
-                {conductor.shift}
-              </Text>
-
-            </View>
-
-          </View>
-
-        </View>
-
-        {/* ================= BACK TO DASHBOARD ================= */}
-
-        <Pressable
-          style={styles.dashboardButton}
-          onPress={() =>
-            router.push('/conductor/dashboard')
-          }
-        >
-          <Text style={styles.dashboardIcon}>
-            ←
-          </Text>
-
-          <Text style={styles.dashboardText}>
-            Back to Dashboard
-          </Text>
-        </Pressable>
-
-        {/* ================= LOGOUT ================= */}
-
-        <Pressable
-          style={styles.logoutButton}
-          onPress={handleLogout}
-        >
-          <Text style={styles.logoutIcon}>
-            ⇥
-          </Text>
-
-          <Text style={styles.logoutText}>
-            Logout
-          </Text>
-        </Pressable>
-
-      </ScrollView>
-    </SafeAreaView>
-  );
+	return (
+		<SafeAreaView style={styles.safeArea}>
+			<ScrollView contentContainerStyle={styles.content}>
+				<View style={styles.header}>
+					<Pressable style={styles.backButton} onPress={() => router.back()} accessibilityLabel="Go back">
+						<Ionicons name="arrow-back" size={20} color="#123B8B" />
+					</Pressable>
+					<Text style={styles.headerTitle}>Staff ID</Text>
+					<View style={styles.headerSpacer} />
+				</View>
+
+				<View style={styles.profileCard}>
+					<View style={styles.avatar}>
+						<Ionicons name="person" size={30} color="#FFF" />
+					</View>
+					<Text style={styles.name}>{conductor.name}</Text>
+					<Text style={styles.position}>{conductor.position}</Text>
+					<View style={styles.activePill}><View style={styles.activeDot} /><Text style={styles.activeText}>ON DUTY</Text></View>
+				</View>
+
+				<View style={styles.detailsCard}>
+					<Text style={styles.sectionTitle}>STAFF DETAILS</Text>
+					<DetailRow icon="id-card-outline" label="Staff ID" value={conductor.badgeId} />
+					<DetailRow icon="briefcase-outline" label="Position" value={conductor.position} />
+					<DetailRow icon="business-outline" label="Depot" value={conductor.depot} />
+					<DetailRow icon="time-outline" label="Current shift" value={conductor.shift} />
+				</View>
+
+				<Pressable style={styles.actionButton} onPress={() => router.push('/conductor/scanner')}>
+					<Ionicons name="scan-outline" size={18} color="#FFF" />
+					<Text style={styles.actionText}>Open ticket scanner</Text>
+				</Pressable>
+			</ScrollView>
+		</SafeAreaView>
+	);
+}
+
+function DetailRow({ icon, label, value }: { icon: React.ComponentProps<typeof Ionicons>['name']; label: string; value: string }) {
+	return (
+		<View style={styles.detailRow}>
+			<Ionicons name={icon} size={18} color="#0D9488" />
+			<Text style={styles.detailLabel}>{label}</Text>
+			<Text style={styles.detailValue}>{value}</Text>
+		</View>
+	);
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#F5F8FA',
-  },
-
-  content: {
-    padding: 20,
-    paddingBottom: 40,
-  },
-
-  // ================= HEADER =================
-
-  header: {
-    height: 54,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 12,
-  },
-
-  backButton: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: '#E7EEF2',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  backIcon: {
-    fontSize: 23,
-    color: '#123B56',
-  },
-
-  headerTitle: {
-    fontSize: 21,
-    fontWeight: '800',
-    color: '#123B56',
-  },
-
-  headerSpace: {
-    width: 42,
-  },
-
-  // ================= PROFILE =================
-
-  profileCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 18,
-    paddingVertical: 28,
-    alignItems: 'center',
-    marginBottom: 28,
-
-    shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    shadowOffset: {
-      width: 0,
-      height: 3,
-    },
-
-    elevation: 2,
-  },
-
-  avatar: {
-    width: 90,
-    height: 90,
-    borderRadius: 45,
-    backgroundColor: '#123B56',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 14,
-  },
-
-  avatarText: {
-    color: '#FFFFFF',
-    fontSize: 31,
-    fontWeight: '800',
-  },
-
-  name: {
-    fontSize: 24,
-    fontWeight: '800',
-    color: '#123B56',
-  },
-
-  role: {
-    fontSize: 14,
-    color: '#71808A',
-    marginTop: 5,
-  },
-
-  activeBadge: {
-    marginTop: 13,
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    borderRadius: 20,
-    backgroundColor: '#E3F4F3',
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-
-  activeDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: '#087F80',
-    marginRight: 7,
-  },
-
-  activeText: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: '#087F80',
-  },
-
-  // ================= DETAILS =================
-
-  sectionTitle: {
-    fontSize: 19,
-    fontWeight: '800',
-    color: '#123B56',
-    marginBottom: 12,
-  },
-
-  detailsCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 18,
-    paddingHorizontal: 16,
-
-    shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    shadowOffset: {
-      width: 0,
-      height: 3,
-    },
-
-    elevation: 2,
-  },
-
-  detailRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 17,
-  },
-
-  detailIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    backgroundColor: '#EAF0F8',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 13,
-  },
-
-  iconText: {
-    fontSize: 18,
-    color: '#123B56',
-    fontWeight: '700',
-  },
-
-  detailContent: {
-    flex: 1,
-  },
-
-  detailLabel: {
-    fontSize: 12,
-    color: '#7B858C',
-    marginBottom: 3,
-  },
-
-  detailValue: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#123B56',
-  },
-
-  line: {
-    height: 1,
-    backgroundColor: '#E7ECEF',
-  },
-
-  // ================= DASHBOARD BUTTON =================
-
-  dashboardButton: {
-    marginTop: 20,
-    backgroundColor: '#E8EDF1',
-    borderRadius: 12,
-    paddingVertical: 15,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexDirection: 'row',
-  },
-
-  dashboardIcon: {
-    fontSize: 18,
-    color: '#123B56',
-    marginRight: 8,
-  },
-
-  dashboardText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#123B56',
-  },
-
-  // ================= LOGOUT BUTTON =================
-
-  logoutButton: {
-    marginTop: 12,
-    backgroundColor: '#FFE8E8',
-    borderWidth: 1,
-    borderColor: '#D32F2F',
-    borderRadius: 12,
-    paddingVertical: 15,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexDirection: 'row',
-  },
-
-  logoutIcon: {
-    fontSize: 19,
-    color: '#D32F2F',
-    marginRight: 8,
-    fontWeight: '700',
-  },
-
-  logoutText: {
-    fontSize: 15,
-    fontWeight: '800',
-    color: '#D32F2F',
-  },
+	safeArea: { flex: 1, backgroundColor: '#F4F7FB' },
+	content: { padding: 16, paddingBottom: 28 },
+	header: { flexDirection: 'row', alignItems: 'center', marginBottom: 20 },
+	backButton: { width: 40, height: 40, borderRadius: 10, backgroundColor: '#E8EEFA', alignItems: 'center', justifyContent: 'center' },
+	headerTitle: { flex: 1, marginLeft: 12, fontSize: 18, fontWeight: '800', color: '#17233A' },
+	headerSpacer: { width: 40 },
+	profileCard: { alignItems: 'center', backgroundColor: '#FFF', padding: 22, borderRadius: 14, borderWidth: 1, borderColor: '#E2E8F0' },
+	avatar: { width: 64, height: 64, borderRadius: 32, backgroundColor: '#123B8B', alignItems: 'center', justifyContent: 'center', marginBottom: 12 },
+	name: { color: '#17233A', fontSize: 20, fontWeight: '800' },
+	position: { color: '#64748B', fontSize: 13, marginTop: 4 },
+	activePill: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#D9F7EB', borderRadius: 12, paddingHorizontal: 10, paddingVertical: 6, marginTop: 12 },
+	activeDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#078363' },
+	activeText: { color: '#087458', fontSize: 9, fontWeight: '800' },
+	detailsCard: { backgroundColor: '#FFF', paddingHorizontal: 16, paddingVertical: 14, borderRadius: 14, borderWidth: 1, borderColor: '#E2E8F0', marginTop: 14 },
+	sectionTitle: { color: '#64748B', fontSize: 10, fontWeight: '800', marginBottom: 8 },
+	detailRow: { minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 10, borderTopWidth: 1, borderTopColor: '#F1F5F9' },
+	detailLabel: { flex: 1, color: '#64748B', fontSize: 12 },
+	detailValue: { color: '#17233A', fontSize: 12, fontWeight: '700' },
+	actionButton: { height: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#123B8B', borderRadius: 10, marginTop: 14 },
+	actionText: { color: '#FFF', fontSize: 13, fontWeight: '800' },
 });

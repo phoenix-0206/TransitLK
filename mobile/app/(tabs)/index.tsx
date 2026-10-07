@@ -129,17 +129,29 @@ export default function LiveMapTrackingTab() {
             renderItem={({ item: bus, index }) => (
               <View style={[styles.busCard, { width: cardWidth }]}>
                 <View style={styles.cardHeader}>
-                  <View style={styles.busBadgeBox}>
-                    <Text style={styles.busBadgeTag}>BUS</Text>
-                    <Text style={styles.busBadgeNum}>{bus.bus_number}</Text>
-                  </View>
-                  <View style={{ flex: 1, marginLeft: 10 }}>
-                    <View style={styles.tagRow}>
-                      <View style={styles.sltbTag}><Text style={styles.sltbText}>{bus.source === 'admin' ? 'ADMIN LOCATION' : 'LIVE GPS'}</Text></View>
-                      {bus.vehicle_registration ? <Text style={styles.regText}>{bus.vehicle_registration}</Text> : null}
+                  <TouchableOpacity
+                    style={styles.busCardSummary}
+                    activeOpacity={0.75}
+                    accessibilityRole="button"
+                    accessibilityLabel={`View details for bus ${bus.bus_number}, ${bus.route_name}`}
+                    onPress={() => router.push({
+                      pathname: '/vehicle-details',
+                      params: { busId: bus.bus_id, busNumber: bus.bus_number },
+                    })}
+                  >
+                    <View style={styles.busBadgeBox}>
+                      <Text style={styles.busBadgeTag}>BUS</Text>
+                      <Text style={styles.busBadgeNum}>{bus.bus_number}</Text>
                     </View>
-                    <Text style={styles.routeTitle}>{bus.route_name}</Text>
-                  </View>
+                    <View style={{ flex: 1, marginLeft: 10 }}>
+                      <View style={styles.tagRow}>
+                        <View style={styles.sltbTag}><Text style={styles.sltbText}>{bus.source === 'admin' ? 'ADMIN LOCATION' : 'LIVE GPS'}</Text></View>
+                        {bus.vehicle_registration ? <Text style={styles.regText}>{bus.vehicle_registration}</Text> : null}
+                      </View>
+                      <Text style={styles.routeTitle}>{bus.route_name}</Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={18} color="#64748B" />
+                  </TouchableOpacity>
                   <TouchableOpacity style={styles.heartBtn} onPress={() => void refreshLocations()} accessibilityLabel="Refresh live bus locations"><Ionicons name="refresh" size={20} color="#002060" /></TouchableOpacity>
                 </View>
 
@@ -197,6 +209,7 @@ const styles = StyleSheet.create({
   busCard: { backgroundColor: '#FFF', borderRadius: 12, padding: 16, marginRight: 10, elevation: 6 },
   carouselPosition: { color: '#64748B', fontSize: 10, fontWeight: '600', textAlign: 'center', marginTop: 2 },
   cardHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
+  busCardSummary: { flex: 1, flexDirection: 'row', alignItems: 'center' },
   busBadgeBox: { backgroundColor: '#002060', padding: 8, borderRadius: 10, alignItems: 'center', width: 50 },
   busBadgeTag: { color: '#93C5FD', fontSize: 8, fontWeight: 'bold' },
   busBadgeNum: { color: '#FFF', fontSize: 16, fontWeight: 'bold' },
