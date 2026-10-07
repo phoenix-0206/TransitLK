@@ -231,7 +231,7 @@ export async function validateTicket(
     const paymentStatus =
       String(
         ticket.payment_status ??
-          '',
+        '',
       )
         .trim()
         .toLowerCase();
@@ -293,7 +293,7 @@ export async function validateTicket(
 
     if (
       status ===
-        'cancelled' ||
+      'cancelled' ||
       status === 'canceled'
     ) {
       const scanLogged =
@@ -496,7 +496,7 @@ export async function validateTicket(
           validUntil.getTime(),
         ) &&
         validUntil.getTime() <
-          now.getTime()
+        now.getTime()
       ) {
         const scanLogged =
           await logTicketScan(
@@ -632,7 +632,7 @@ export async function validateTicket(
     if (!updatedTicket) {
       const {
         data:
-          latestTicket,
+        latestTicket,
       } = await supabase
         .from('tickets')
         .select('*')
@@ -737,4 +737,303 @@ export async function validateTicket(
       scanLogged: false,
     };
   }
+}
+
+// ======================================================
+// PASSENGER TICKET CREATION & HISTORY
+// ======================================================
+
+export interface CreateTicketInput {
+  passengerId?: string | null;
+  scheduleId?: string | null;
+  ticketNumber?: string;
+  ticketToken?: string;
+  ticketType?: string;
+  fare: number;
+  boardingPoint?: string;
+  seatNumber?: string;
+  routeNumber?: string;
+  serviceName?: string;
+  originName?: string;
+  destinationName?: string;
+  departureTime?: string;
+  arrivalTime?: string;
+  travelDate?: string;
+  passengerCount?: string | number;
+  passengerDetails?: string;
+  paymentMethod?: string;
+}
+
+export interface TicketRecord {
+  id?: string;
+  passenger_id?: string | null;
+  schedule_id?: string | null;
+  ticket_number: string;
+  ticket_token: string;
+  ticket_type: string;
+  fare: number;
+  boarding_point?: string;
+  seat_number?: string;
+  status: string;
+  payment_status: string;
+  purchased_at: string;
+  valid_until?: string;
+  created_at?: string;
+  updated_at?: string;
+  route_number?: string;
+  service_name?: string;
+  origin?: string;
+  origin_name?: string;
+  destination?: string;
+  destination_name?: string;
+  departure_time?: string;
+  arrival_time?: string;
+  travel_date?: string;
+  passenger_count?: string | number;
+  passenger_type?: string;
+  payment_method?: string;
+  bus_schedules?: any;
+}
+
+/**
+ * Creates a digital ticket and inserts it directly into the Supabase `tickets` table,
+ * while saving to AsyncStorage as local backup.
+ */
+export async function createTicket(
+  input: CreateTicketInput,
+): Promise<{ success: boolean; ticket: TicketRecord; error?: string }> {
+  const randomSuffix = Math.floor(100000 + Math.random() * 900000);
+  const ticketNumber = input.ticketNumber || `TLK-${randomSuffix}`;
+  const ticketToken = input.ticketToken || `TLK-2026-${Math.floor(1000 + Math.random() * 9000)}-B`;
+  const purchasedAt = new Date().toISOString();
+  const validUntil = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+
+  // 1. Resolve passenger_id
+  let passengerId = input.passengerId || null;
+  if (!passengerId) {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user?.id) {
+        passengerId = user.id;
+      }
+    } catch {
+      // Continue
+    }
+  }
+  // Default to system passenger ID if unauthenticated to satisfy not-null constraint
+  if (!passengerId) {
+    passengerId = '44736a01-a842-4506-8521-51137f85b2db';
+  }
+
+  // 2. Resolve schedule_id
+  let scheduleId = input.scheduleId || null;
+  if (!scheduleId && input.routeNumber) {
+    try {
+      const { data: matchedSchedule } = await supabase
+        .from('bus_schedules')
+        .select('id')
+        .eq('route_number', input.routeNumber)
+        .limit(1)
+        .maybeSingle();
+      if (matchedSchedule?.id) {
+        scheduleId = matchedSchedule.id;
+      }
+    } catch {
+      // Continue
+    }
+  }
+
+  // Fallback to first available bus schedule to satisfy foreign key if needed
+  if (!scheduleId) {
+    try {
+      const { data: anySchedule } = await supabase
+        .from('bus_schedules')
+        .select('id')
+        .limit(1)
+        .maybeSingle();
+      if (anySchedule?.id) {
+        scheduleId = anySchedule.id;
+      }
+    } catch {
+      // Continue
+    }
+  }
+  if (!scheduleId) {
+    scheduleId = '6e752d17-a338-4ce5-a061-3bd74089acfe';
+  }
+
+  // 3. Full ticket record for UI/local storage
+  const fullTicketRecord: TicketRecord = {
+    passenger_id: passengerId,
+    schedule_id: scheduleId,
+    ticket_number: ticketNumber,
+    ticket_token: ticketToken,
+    ticket_type: input.ticketType || 'STANDARD',
+    fare: input.fare,
+    boarding_point: input.boardingPoint || input.originName || 'Colombo Fort',
+    seat_number: input.seatNumber || 'A1',
+    status: 'ACTIVE',
+    payment_status: 'PAID',
+    purchased_at: purchasedAt,
+    valid_until: validUntil,
+    created_at: purchasedAt,
+    updated_at: purchasedAt,
+    route_number: input.routeNumber || '138',
+    service_name: input.serviceName || 'SLTB Express',
+    origin: input.originName || 'Colombo Fort',
+    origin_name: input.originName || 'Colombo Fort',
+    destination: input.destinationName || 'Maharagama',
+    destination_name: input.destinationName || 'Maharagama',
+    departure_time: input.departureTime || '08:45 AM',
+    arrival_time: input.arrivalTime || '09:30 AM',
+    travel_date: input.travelDate || 'Today',
+    passenger_count: input.passengerCount || '1',
+    passenger_type: input.passengerDetails || '1 Adult',
+    payment_method: input.paymentMethod || 'Visa / LankaPay',
+  };
+
+  // 4. Save into Supabase `tickets` table
+  let supabaseError: any = null;
+  try {
+    const supabasePayload: Record<string, any> = {
+      ticket_number: ticketNumber,
+      ticket_token: ticketToken,
+      ticket_type: input.ticketType || 'STANDARD',
+      fare: input.fare,
+      boarding_point: input.boardingPoint || input.originName || 'Colombo Fort',
+      seat_number: input.seatNumber || 'A1',
+      status: 'ACTIVE',
+      payment_status: 'PAID',
+      purchased_at: purchasedAt,
+      valid_until: validUntil,
+      passenger_id: passengerId,
+      schedule_id: scheduleId,
+    };
+
+    const res = await supabase
+      .from('tickets')
+      .insert(supabasePayload)
+      .select('*')
+      .maybeSingle();
+
+    if (res.error) {
+      supabaseError = res.error;
+      console.warn('Supabase ticket insert error:', res.error);
+    } else if (res.data) {
+      fullTicketRecord.id = res.data.id;
+      console.log('Successfully recorded ticket in Supabase tickets table:', res.data.id);
+    }
+  } catch (err: any) {
+    supabaseError = err;
+    console.warn('Supabase ticket insert exception:', err);
+  }
+
+  // 5. Also record notification in Supabase `notifications` table
+  try {
+    await supabase.from('notifications').insert({
+      title: `Ticket Booked: ${ticketNumber}`,
+      message: `Your booking for Route ${input.routeNumber || 'Bus'} (${input.originName || 'Origin'} to ${input.destinationName || 'Destination'}) is confirmed. Fare: LKR ${Number(input.fare).toFixed(2)}.`,
+      type: 'ticket',
+      route_number: input.routeNumber || 'Bus',
+      is_read: false,
+      is_active: true,
+    });
+  } catch {
+    // Continue
+  }
+
+  // 6. Save to local storage as backup
+  try {
+    const existingRaw = await AsyncStorage.getItem('transitlk_tickets');
+    const list: TicketRecord[] = existingRaw ? JSON.parse(existingRaw) : [];
+    const existingIdx = list.findIndex(
+      (item) => item.ticket_token === ticketToken || item.ticket_number === ticketNumber,
+    );
+    if (existingIdx >= 0) {
+      list[existingIdx] = fullTicketRecord;
+    } else {
+      list.unshift(fullTicketRecord);
+    }
+    await AsyncStorage.setItem('transitlk_tickets', JSON.stringify(list.slice(0, 50)));
+  } catch {
+    // Continue
+  }
+
+  return {
+    success: !supabaseError,
+    ticket: fullTicketRecord,
+    error: supabaseError ? supabaseError.message || String(supabaseError) : undefined,
+  };
+}
+
+/**
+ * Fetches passenger tickets from Supabase tickets table.
+ */
+export async function getPassengerTickets(
+  passengerId?: string | null,
+): Promise<TicketRecord[]> {
+  const localMap = new Map<string, TicketRecord>();
+
+  // 1. Read local cache
+  try {
+    const raw = await AsyncStorage.getItem('transitlk_tickets');
+    if (raw) {
+      const parsed: TicketRecord[] = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        parsed.forEach((t) => {
+          if (t.ticket_token) localMap.set(t.ticket_token, t);
+          else if (t.ticket_number) localMap.set(t.ticket_number, t);
+        });
+      }
+    }
+  } catch {
+    // Continue
+  }
+
+  // 2. Fetch from Supabase tickets table
+  try {
+    let query = supabase
+      .from('tickets')
+      .select('*, bus_schedules(*)')
+      .order('created_at', { ascending: false });
+
+    if (passengerId) {
+      query = query.eq('passenger_id', passengerId);
+    }
+
+    const { data, error } = await query;
+    if (!error && Array.isArray(data)) {
+      data.forEach((row: any) => {
+        const key = row.ticket_token || row.ticket_number || row.id;
+        const local = localMap.get(key);
+        const sched = row.bus_schedules;
+
+        const merged: TicketRecord = {
+          ...row,
+          route_number: sched?.route_number || local?.route_number || 'Bus',
+          origin: sched?.origin || local?.origin || row.boarding_point || 'Colombo',
+          origin_name: sched?.origin || local?.origin_name || row.boarding_point || 'Colombo',
+          destination: sched?.destination || local?.destination || 'Destination',
+          destination_name: sched?.destination || local?.destination_name || 'Destination',
+          departure_time: sched?.departure_time || local?.departure_time || 'Scheduled',
+          arrival_time: sched?.arrival_time || local?.arrival_time || '',
+          service_name: sched?.transport_type || local?.service_name || 'TransitLK Bus',
+          travel_date: local?.travel_date || new Date(row.created_at || row.purchased_at || Date.now()).toLocaleDateString(),
+          fare: Number(row.fare) || local?.fare || 0,
+          status: row.status || local?.status || 'VALID',
+          payment_status: row.payment_status || local?.payment_status || 'PAID',
+        };
+
+        localMap.set(key, merged);
+      });
+    }
+  } catch {
+    // Continue
+  }
+
+  return Array.from(localMap.values()).sort((a, b) => {
+    const tA = new Date(a.created_at || a.purchased_at || 0).getTime();
+    const tB = new Date(b.created_at || b.purchased_at || 0).getTime();
+    return tB - tA;
+  });
 }

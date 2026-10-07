@@ -2,7 +2,8 @@ import React, { useState, useMemo } from 'react';
 import {
   Alert,
   Modal,
-  Pressable,  ScrollView,
+  Pressable,
+  ScrollView,
   StatusBar,
   StyleSheet,
   Text,
@@ -746,7 +747,8 @@ const styles = StyleSheet.create({
   brandSubtitle: {
     fontSize: 9,
     fontWeight: 'bold',
-    color: '#8E9CAE',  },
+    color: '#8E9CAE',
+  },
   headerRight: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -825,7 +827,8 @@ const styles = StyleSheet.create({
   pageTitle: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#0F172A',  },
+    color: '#0F172A',
+  },
   headerActionBtns: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -890,7 +893,8 @@ const styles = StyleSheet.create({
   smartPassTagText: {
     fontSize: 10,
     fontWeight: 'bold',
-    color: '#BFDBFE',  },
+    color: '#BFDBFE',
+  },
   topUpButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -931,7 +935,8 @@ const styles = StyleSheet.create({
   balanceAmount: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#FFFFFF',  },
+    color: '#FFFFFF',
+  },
   currencyPrefix: {
     fontSize: 15,
     fontWeight: 'bold',
@@ -985,7 +990,8 @@ const styles = StyleSheet.create({
   inspectorHeading: {
     fontSize: 11,
     fontWeight: 'bold',
-    color: '#0F172A',  },
+    color: '#0F172A',
+  },
   inspectorSub: {
     fontSize: 10,
     color: '#64748B',

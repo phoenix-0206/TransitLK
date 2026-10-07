@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import {
-  Pressable,  ScrollView,
+  Pressable,
+  ScrollView,
   StatusBar,
   StyleSheet,
   Text,
@@ -386,7 +387,8 @@ const styles = StyleSheet.create({
   brandSubtitle: {
     fontSize: 9,
     fontWeight: 'bold',
-    color: '#8E9CAE',  },
+    color: '#8E9CAE',
+  },
   headerRight: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -441,7 +443,8 @@ const styles = StyleSheet.create({
   screenTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#0F172A',  },
+    color: '#0F172A',
+  },
   screenSubtitle: {
     fontSize: 11,
     color: '#64748B',
@@ -681,5 +684,6 @@ const styles = StyleSheet.create({
   continueButtonText: {
     fontSize: 14,
     fontWeight: 'bold',
-    color: '#FFFFFF',  },
+    color: '#FFFFFF',
+  },
 });
