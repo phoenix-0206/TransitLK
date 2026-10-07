@@ -15,20 +15,27 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   created_at  TIMESTAMPTZ DEFAULT now(),
   updated_at  TIMESTAMPTZ DEFAULT now()
 );
+ALTER TABLE public.profiles
+  ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'commuter',
+  ADD COLUMN IF NOT EXISTS avatar_url TEXT,
+  ADD COLUMN IF NOT EXISTS pass_category TEXT DEFAULT 'regular';
 
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 
 -- Users can read their own profile
+DROP POLICY IF EXISTS "Users can view own profile" ON public.profiles;
 CREATE POLICY "Users can view own profile"
   ON public.profiles FOR SELECT
   USING (auth.uid() = id);
 
 -- Users can insert their own profile
+DROP POLICY IF EXISTS "Users can insert own profile" ON public.profiles;
 CREATE POLICY "Users can insert own profile"
   ON public.profiles FOR INSERT
   WITH CHECK (auth.uid() = id);
 
 -- Users can update their own profile
+DROP POLICY IF EXISTS "Users can update own profile" ON public.profiles;
 CREATE POLICY "Users can update own profile"
   ON public.profiles FOR UPDATE
   USING (auth.uid() = id);
@@ -65,11 +72,34 @@ CREATE TABLE IF NOT EXISTS public.bus_locations (
 );
 
 ALTER TABLE public.bus_locations ENABLE ROW LEVEL SECURITY;
+GRANT SELECT ON public.bus_locations TO anon, authenticated;
+GRANT INSERT, UPDATE, DELETE ON public.bus_locations TO authenticated;
 
 -- Bus locations are publicly readable (no auth needed for tracking)
+DROP POLICY IF EXISTS "Bus locations are publicly readable" ON public.bus_locations;
 CREATE POLICY "Bus locations are publicly readable"
   ON public.bus_locations FOR SELECT
   USING (true);
+
+DROP POLICY IF EXISTS "Admins manage bus locations" ON public.bus_locations;
+CREATE POLICY "Admins manage bus locations"
+  ON public.bus_locations FOR ALL TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1
+      FROM public.profiles
+      WHERE profiles.id = auth.uid()
+        AND profiles.role = 'admin'
+    )
+  )
+  WITH CHECK (
+    EXISTS (
+      SELECT 1
+      FROM public.profiles
+      WHERE profiles.id = auth.uid()
+        AND profiles.role = 'admin'
+    )
+  );
 
 -- ─────────────────────────────────────────────────────
 -- 3. BUS_SCHEDULES TABLE
@@ -98,6 +128,7 @@ NOTIFY pgrst, 'reload schema';
 ALTER TABLE public.bus_schedules ENABLE ROW LEVEL SECURITY;
 
 -- Schedules are publicly readable
+DROP POLICY IF EXISTS "Bus schedules are publicly readable" ON public.bus_schedules;
 CREATE POLICY "Bus schedules are publicly readable"
   ON public.bus_schedules FOR SELECT
   USING (true);
@@ -120,16 +151,19 @@ CREATE TABLE IF NOT EXISTS public.saved_routes (
 ALTER TABLE public.saved_routes ENABLE ROW LEVEL SECURITY;
 
 -- Users can read their own saved routes
+DROP POLICY IF EXISTS "Users can view own saved routes" ON public.saved_routes;
 CREATE POLICY "Users can view own saved routes"
   ON public.saved_routes FOR SELECT
   USING (auth.uid() = user_id);
 
 -- Users can insert their own saved routes
+DROP POLICY IF EXISTS "Users can insert own saved routes" ON public.saved_routes;
 CREATE POLICY "Users can insert own saved routes"
   ON public.saved_routes FOR INSERT
   WITH CHECK (auth.uid() = user_id);
 
 -- Users can delete their own saved routes
+DROP POLICY IF EXISTS "Users can delete own saved routes" ON public.saved_routes;
 CREATE POLICY "Users can delete own saved routes"
   ON public.saved_routes FOR DELETE
   USING (auth.uid() = user_id);
@@ -148,6 +182,16 @@ CREATE TABLE IF NOT EXISTS public.conductor_buses (
   UNIQUE (owner_id, vehicle_registration)
 );
 
+-- Upgrade installations that created this table before conductor GPS was added.
+ALTER TABLE public.conductor_buses
+  ADD COLUMN IF NOT EXISTS owner_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+  ADD COLUMN IF NOT EXISTS bus_number TEXT,
+  ADD COLUMN IF NOT EXISTS vehicle_registration TEXT,
+  ADD COLUMN IF NOT EXISTS route_name TEXT,
+  ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT now();
+ALTER TABLE public.conductor_buses
+  ALTER COLUMN owner_id SET DEFAULT auth.uid();
+
 ALTER TABLE public.conductor_buses ENABLE ROW LEVEL SECURITY;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.conductor_buses TO authenticated;
 
@@ -156,6 +200,26 @@ CREATE POLICY "Conductors manage their own bus registrations"
   ON public.conductor_buses FOR ALL TO authenticated
   USING (auth.uid() = owner_id)
   WITH CHECK (auth.uid() = owner_id);
+
+DROP POLICY IF EXISTS "Admins manage conductor bus registrations" ON public.conductor_buses;
+CREATE POLICY "Admins manage conductor bus registrations"
+  ON public.conductor_buses FOR ALL TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1
+      FROM public.profiles
+      WHERE profiles.id = auth.uid()
+        AND profiles.role = 'admin'
+    )
+  )
+  WITH CHECK (
+    EXISTS (
+      SELECT 1
+      FROM public.profiles
+      WHERE profiles.id = auth.uid()
+        AND profiles.role = 'admin'
+    )
+  );
 
 CREATE TABLE IF NOT EXISTS public.conductor_bus_locations (
   bus_id                UUID PRIMARY KEY REFERENCES public.conductor_buses(id) ON DELETE CASCADE,
@@ -169,6 +233,18 @@ CREATE TABLE IF NOT EXISTS public.conductor_bus_locations (
   speed_mps             DOUBLE PRECISION,
   updated_at            TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Upgrade installations that already have the live-location table.
+ALTER TABLE public.conductor_bus_locations
+  ADD COLUMN IF NOT EXISTS bus_number TEXT,
+  ADD COLUMN IF NOT EXISTS vehicle_registration TEXT,
+  ADD COLUMN IF NOT EXISTS route_name TEXT,
+  ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION,
+  ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION,
+  ADD COLUMN IF NOT EXISTS accuracy_meters DOUBLE PRECISION,
+  ADD COLUMN IF NOT EXISTS heading DOUBLE PRECISION,
+  ADD COLUMN IF NOT EXISTS speed_mps DOUBLE PRECISION,
+  ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now();
 
 ALTER TABLE public.conductor_bus_locations ENABLE ROW LEVEL SECURITY;
 GRANT SELECT ON public.conductor_bus_locations TO anon, authenticated;
@@ -215,3 +291,4 @@ CREATE POLICY "Conductors stop sharing their own bus locations"
     )
   );
 -- Live bus and timetable rows are created through app workflows, not demo seeds.
+NOTIFY pgrst, 'reload schema';

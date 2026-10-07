@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { View } from 'react-native';
 import { Stack, router, useSegments } from 'expo-router';
 import { Session } from '@supabase/supabase-js';
@@ -9,6 +9,7 @@ export default function RootLayout() {
   const [session, setSession] = useState<Session | null>(null);
   const [isReady, setIsReady] = useState(false);
   const segments = useSegments();
+  const launchSplashShown = useRef(false);
 
   useEffect(() => {
     // Check initial session
@@ -36,6 +37,16 @@ export default function RootLayout() {
     const authOnlyScreens = ['login', 'signup', 'otp'];
     const onAuthScreen = authOnlyScreens.includes(segments[0] as string);
 
+    if (!launchSplashShown.current) {
+      launchSplashShown.current = true;
+      if (segments[0] !== 'index') {
+        router.replace('/');
+      }
+      return;
+    }
+
+    if (segments[0] === 'index') return;
+
     if (!session && inAuthGroup) {
       // Not logged in but trying to access protected tabs → redirect to login
       router.replace('/login');
@@ -48,6 +59,8 @@ export default function RootLayout() {
   }, [session, segments, isReady]);
 
   const isConductorDashboard = segments[0] === 'conductor' && segments[1] === 'dashboard';
+  const hideBottomNavigation = (!segments[0] || ['index', 'login', 'signup', 'otp', 'sign-up-loading', 'conductor'].includes(segments[0] as string))
+    || isConductorDashboard;
 
   return (
     <View style={{ flex: 1 }}>
@@ -74,7 +87,7 @@ export default function RootLayout() {
         <Stack.Screen name="admin" options={{ headerShown: false }} />
         <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Info' }} />
       </Stack>
-      {!isConductorDashboard && <BottomNavigation />}
+      {!hideBottomNavigation && <BottomNavigation />}
     </View>
   );
 }
