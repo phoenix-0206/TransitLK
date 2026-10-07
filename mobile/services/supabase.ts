@@ -2,10 +2,26 @@ import 'react-native-url-polyfill/auto';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = 'https://yjdbmnkcjiqxcpnoovhz.supabase.co';
-const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlqZGJtbmtjamlxeGNwbm9vdmh6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEwNzQ1ODEsImV4cCI6MjEwNjY1MDU4MX0.MpWeX1Qc8zs8VFdu0HXLhubSDEkOLsqjYF4kpPQQeuA';
+// Polyfill WebSocket for Node.js SSR environments
+if (typeof window === 'undefined') {
+  try {
+    const ws = require('ws');
+    if (typeof globalThis !== 'undefined' && !(globalThis as any).WebSocket) {
+      (globalThis as any).WebSocket = ws;
+    }
+  } catch (e) {
+    // ignore
+  }
+}
 
-// Safe storage adapter — wraps AsyncStorage with a fallback for Expo Go
+const supabaseUrl =
+  process.env.EXPO_PUBLIC_SUPABASE_URL || 'https://yjdbmnkcjiqxcpnoovhz.supabase.co';
+const supabaseAnonKey =
+  process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ||
+  process.env.EXPO_PUBLIC_SUPABASE_KEY ||
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlqZGJtbmtjamlxeGNwbm9vdmh6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEwNzQ1ODEsImV4cCI6MjEwNjY1MDU4MX0.MpWeX1Qc8zs8VFdu0HXLhubSDEkOLsqjYF4kpPQQeuA';
+
+// Safe storage adapter — wraps AsyncStorage with a fallback for Expo Go / Web
 const memoryStore = new Map<string, string>();
 const safeStorage = {
   async getItem(key: string): Promise<string | null> {
@@ -34,8 +50,8 @@ const safeStorage = {
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     storage: safeStorage,
-    autoRefreshToken: true,
-    persistSession: true,
+    autoRefreshToken: typeof window !== 'undefined',
+    persistSession: typeof window !== 'undefined',
     detectSessionInUrl: false,
   },
 });

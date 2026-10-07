@@ -42,13 +42,13 @@ export default function RootLayout() {
 
     if (!launchSplashShown.current) {
       launchSplashShown.current = true;
-      if (segments[0] !== 'index') {
+      if ((segments[0] as string) !== 'index') {
         router.replace('/');
       }
       return;
     }
 
-    if (segments[0] === 'index') return;
+    if ((segments[0] as string) === 'index') return;
 
     if (!session && inAuthGroup) {
       router.replace('/login');
@@ -74,34 +74,224 @@ export default function RootLayout() {
   }, [session, segments, isReady]);
 
   const isConductorDashboard = segments[0] === 'conductor' && segments[1] === 'dashboard';
-  const hideBottomNavigation = (!segments[0] || ['index', 'login', 'signup', 'otp', 'sign-up-loading', 'conductor'].includes(segments[0] as string))
+  const hideBottomNavigation = (!segments[0] || ['index', 'role-selection', 'login', 'signup', 'otp', 'sign-up-loading', 'conductor', 'passenger'].includes(segments[0] as string))
     || isConductorDashboard;
 
   return (
     <View style={{ flex: 1 }}>
       <Stack
         screenOptions={{
-          headerStyle: { backgroundColor: '#002060' },
+          headerStyle: {
+            backgroundColor: '#002060',
+          },
           headerTintColor: '#FFF',
-          headerTitleStyle: { fontWeight: 'bold' },
+          headerTitleStyle: {
+            fontWeight: 'bold',
+          },
         }}
       >
-        <Stack.Screen name="index" options={{ headerShown: false }} />
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="login" options={{ headerShown: false }} />
-        <Stack.Screen name="signup" options={{ headerShown: false }} />
-        <Stack.Screen name="otp" options={{ headerShown: false }} />
-        <Stack.Screen name="sign-up-loading" options={{ headerShown: false }} />
-        <Stack.Screen name="pass-activation" options={{ title: 'Activate Smart Pass' }} />
-        <Stack.Screen name="conductor" options={{ title: 'Conductor GPS' }} />
-        <Stack.Screen name="loading-sync" options={{ headerShown: false }} />
-        <Stack.Screen name="LiveMapScreen" options={{ title: 'Live Map Detail' }} />
-        <Stack.Screen name="interactive-route-map" options={{ title: 'Route Map' }} />
-        <Stack.Screen name="timetable-schedules" options={{ title: 'Timetable & Schedules' }} />
-        <Stack.Screen name="vehicle-details" options={{ headerShown: false }} />
-        <Stack.Screen name="profile" options={{ title: 'Smart Pass & Profile' }} />
-        <Stack.Screen name="admin" options={{ headerShown: false }} />
-        <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Info' }} />
+
+        {/* =========================================
+            APP START / ROLE SELECTION
+            ========================================= */}
+
+        <Stack.Screen
+          name="index"
+          options={{
+            headerShown: false,
+          }}
+        />
+
+        <Stack.Screen
+          name="role-selection"
+          options={{
+            headerShown: false,
+          }}
+        />
+
+        {/* =========================================
+            PASSENGER
+            ========================================= */}
+
+        <Stack.Screen
+          name="(tabs)"
+          options={{
+            headerShown: false,
+          }}
+        />
+
+        <Stack.Screen
+          name="login"
+          options={{
+            headerShown: false,
+          }}
+        />
+
+        <Stack.Screen
+          name="signup"
+          options={{
+            headerShown: false,
+          }}
+        />
+
+        <Stack.Screen
+          name="otp"
+          options={{
+            headerShown: false,
+          }}
+        />
+
+        <Stack.Screen
+          name="sign-up-loading"
+          options={{
+            headerShown: false,
+          }}
+        />
+
+        <Stack.Screen
+          name="pass-activation"
+          options={{
+            title: 'Activate Smart Pass',
+          }}
+        />
+
+        {/* Routes Booking */}
+        <Stack.Screen
+          name="search"
+          options={{
+            headerShown: false,
+          }}
+        />
+
+        {/* Passenger Ticket Purchase Module */}
+        <Stack.Screen
+          name="passenger"
+          options={{
+            headerShown: false,
+          }}
+        />
+
+        {/* =========================================
+            CONDUCTOR
+            ========================================= */}
+
+        <Stack.Screen
+          name="conductor"
+          options={{
+            title: 'Conductor GPS',
+          }}
+        />
+
+        <Stack.Screen
+          name="conductor/signup"
+          options={{
+            headerShown: false,
+          }}
+        />
+
+        <Stack.Screen
+          name="conductor/login"
+          options={{
+            headerShown: false,
+          }}
+        />
+
+        <Stack.Screen
+          name="conductor/dashboard"
+          options={{
+            headerShown: false,
+          }}
+        />
+
+        <Stack.Screen
+          name="conductor/scanner"
+          options={{
+            headerShown: false,
+          }}
+        />
+
+        <Stack.Screen
+          name="conductor/validation-result"
+          options={{
+            headerShown: false,
+          }}
+        />
+
+        <Stack.Screen
+          name="conductor/recent-scans"
+          options={{
+            headerShown: false,
+          }}
+        />
+
+        <Stack.Screen
+          name="conductor/profile"
+          options={{
+            headerShown: false,
+          }}
+        />
+
+        {/* =========================================
+            OTHER EXISTING SCREENS
+            ========================================= */}
+
+        <Stack.Screen
+          name="loading-sync"
+          options={{
+            headerShown: false,
+          }}
+        />
+
+        <Stack.Screen
+          name="LiveMapScreen"
+          options={{
+            title: 'Live Map Detail',
+          }}
+        />
+
+        <Stack.Screen
+          name="interactive-route-map"
+          options={{
+            title: 'Route Map',
+          }}
+        />
+
+        <Stack.Screen
+          name="timetable-schedules"
+          options={{
+            title: 'Timetable & Schedules',
+          }}
+        />
+
+        <Stack.Screen
+          name="vehicle-details"
+          options={{
+            headerShown: false,
+          }}
+        />
+
+        <Stack.Screen
+          name="profile"
+          options={{
+            title: 'Smart Pass & Profile',
+          }}
+        />
+
+        <Stack.Screen
+          name="admin"
+          options={{
+            headerShown: false,
+          }}
+        />
+
+        <Stack.Screen
+          name="modal"
+          options={{
+            presentation: 'modal',
+            title: 'Info',
+          }}
+        />
+
       </Stack>
       {!hideBottomNavigation && <BottomNavigation />}
     </View>

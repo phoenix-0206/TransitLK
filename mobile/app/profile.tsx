@@ -266,7 +266,10 @@ export default function ProfileScreen() {
         {profile?.role === 'admin' && (
           <View style={styles.adminSection}>
             <Text style={styles.sectionHeader}>ADMINISTRATOR PRIVILEGES</Text>
-            <TouchableOpacity style={styles.adminBtn} onPress={() => router.push('/admin')}>
+            <TouchableOpacity 
+              style={styles.adminBtn} 
+              onPress={() => router.push('/admin' as any)}
+            >
               <View style={styles.adminBtnLeft}>
                 <View style={styles.adminIcon}><Ionicons name="shield-checkmark" size={19} color="#FFF" /></View>
                 <View>
@@ -281,6 +284,12 @@ export default function ProfileScreen() {
 
         <Text style={styles.sectionHeader}>ACCOUNT &amp; PRIVACY</Text>
         <View style={styles.menuCard}>
+          <MenuItem
+            icon="receipt-outline"
+            title="Transaction History"
+            subtitle="View ticket payments and top-up records"
+            onPress={() => router.push('/passenger/purchase-history' as any)}
+          />
           <MenuItem icon="notifications-outline" title="Notifications" subtitle="Live bus alerts and service updates" onPress={() => showComingSoon('Notifications', 'Notification preferences will be available here soon.')} />
           <MenuItem icon="language-outline" title="Language" subtitle="English • සිංහල available soon" onPress={() => showComingSoon('Language', 'Language selection will be available here soon.')} />
           <MenuItem icon="shield-checkmark-outline" title="Privacy & permissions" subtitle="Location and account access" onPress={() => showComingSoon('Privacy & permissions', 'Review location and account permissions in your device settings.')} />

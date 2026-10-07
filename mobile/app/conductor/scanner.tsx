@@ -16,12 +16,13 @@ import {
   useCameraPermissions,
 } from 'expo-camera';
 
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 
 import { validateTicket } from '@/services/ticketService';
 
 export default function ConductorScannerScreen() {
   const router = useRouter();
+  const searchParams = useLocalSearchParams<{ testToken?: string }>();
 
   const [permission, requestPermission] =
     useCameraPermissions();
@@ -33,7 +34,7 @@ export default function ConductorScannerScreen() {
     useState('');
 
   const [manualTicketId, setManualTicketId] =
-    useState('');
+    useState(searchParams.testToken || '');
 
   const [torch, setTorch] =
     useState(false);

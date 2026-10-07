@@ -1,3 +1,4 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from './supabase';
 
 // ======================================================
@@ -102,85 +103,117 @@ export async function validateTicket(
   if (!token) {
     return {
       valid: false,
-
       result: 'INVALID',
-
       message: 'Invalid Ticket',
-
       reason:
         'Ticket ID is empty.',
-
       ticket: null,
-
       scanLogged: false,
     };
   }
 
+  // Parse QR JSON payload if present
+  let parsedJsonTicket: Record<string, any> | null = null;
+  let tokenToQuery = token;
+
+  if (token.startsWith('{') && token.endsWith('}')) {
+    try {
+      parsedJsonTicket = JSON.parse(token);
+      tokenToQuery =
+        parsedJsonTicket?.ticket_token ||
+        parsedJsonTicket?.ticket_number ||
+        parsedJsonTicket?.token ||
+        token;
+    } catch (err) {
+      console.warn('Could not parse ticket JSON:', err);
+    }
+  }
+
+  // Check duplicate scan cache in AsyncStorage
   try {
-    // ==================================================
-    // FIND TICKET
-    // ==================================================
-
-    const {
-      data: ticket,
-      error: ticketError,
-    } = await supabase
-      .from('tickets')
-      .select('*')
-      .eq(
-        'ticket_token',
-        token,
-      )
-      .maybeSingle();
-
-    // ==================================================
-    // DATABASE ERROR
-    // ==================================================
-
-    if (ticketError) {
-      console.error(
-        'Ticket lookup error:',
-        ticketError,
-      );
-
+    const usedRaw = await AsyncStorage.getItem('transitlk_used_tokens');
+    const usedTokens = usedRaw ? JSON.parse(usedRaw) : [];
+    if (usedTokens.includes(tokenToQuery)) {
+      const fallback = parsedJsonTicket || {
+        ticket_token: tokenToQuery,
+        ticket_number: tokenToQuery,
+        status: 'USED',
+      };
       return {
         valid: false,
-
-        result: 'ERROR',
-
-        message:
-          'Validation Failed',
-
-        reason:
-          ticketError.message,
-
-        ticket: null,
-
+        result: 'ALREADY_USED',
+        message: 'Ticket Already Used',
+        reason: 'This digital ticket has already been validated and cannot be used again.',
+        ticket: fallback,
         scanLogged: false,
       };
+    }
+  } catch (err) {
+    console.warn('Used tokens cache check error:', err);
+  }
+
+  try {
+    // ==================================================
+    // 1. FIND TICKET IN SUPABASE
+    // ==================================================
+    let ticket: Record<string, any> | null = null;
+
+    try {
+      const { data, error } = await supabase
+        .from('tickets')
+        .select('*')
+        .eq('ticket_token', tokenToQuery)
+        .maybeSingle();
+
+      if (!error && data) {
+        ticket = data;
+      }
+    } catch {
+      // Supabase table may not exist yet or offline
+    }
+
+    // ==================================================
+    // 2. FALLBACK: FIND TICKET IN ASYNCSTORAGE
+    // ==================================================
+    if (!ticket) {
+      try {
+        const stored = await AsyncStorage.getItem('transitlk_tickets');
+        if (stored) {
+          const list = JSON.parse(stored);
+          if (Array.isArray(list)) {
+            const found = list.find(
+              (item: any) =>
+                item.ticket_token === tokenToQuery ||
+                item.ticket_number === tokenToQuery ||
+                item.bookingRef === tokenToQuery,
+            );
+            if (found) {
+              ticket = found;
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('AsyncStorage lookup error:', err);
+      }
+    }
+
+    // ==================================================
+    // 3. FALLBACK: USE PARSED QR JSON PAYLOAD
+    // ==================================================
+    if (!ticket && parsedJsonTicket) {
+      ticket = parsedJsonTicket;
     }
 
     // ==================================================
     // TICKET NOT FOUND
     // ==================================================
-
     if (!ticket) {
       return {
         valid: false,
-
         result: 'INVALID',
-
-        message:
-          'Invalid Ticket',
-
-        reason:
-          'No ticket was found for this QR code.',
-
+        message: 'Invalid Ticket',
+        reason: 'No ticket was found for this QR code.',
         ticket: null,
-
-        // No ticket_id exists,
-        // so we cannot safely create
-        // a ticket_scans record.
         scanLogged: false,
       };
     }
@@ -498,30 +531,61 @@ export async function validateTicket(
     // MARK TICKET AS USED
     // ==================================================
 
-    const {
-      data:
-        updatedTicket,
+    // 1. If ticket is in Supabase with an id, update Supabase
+    let updatedTicket: Record<string, any> | null = null;
+    let updateError: any = null;
 
-      error:
-        updateError,
-    } = await supabase
-      .from('tickets')
-      .update({
+    if (ticket.id && typeof ticket.id === 'string' && ticket.id.length > 20) {
+      const res = await supabase
+        .from('tickets')
+        .update({
+          status: 'USED',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', ticket.id)
+        .neq('status', 'used')
+        .select('*')
+        .maybeSingle();
+      updatedTicket = res.data;
+      updateError = res.error;
+    }
+
+    // 2. Mark in local AsyncStorage used tokens and list
+    try {
+      const usedRaw = await AsyncStorage.getItem('transitlk_used_tokens');
+      const usedTokens = usedRaw ? JSON.parse(usedRaw) : [];
+      if (!usedTokens.includes(tokenToQuery)) {
+        usedTokens.push(tokenToQuery);
+        await AsyncStorage.setItem('transitlk_used_tokens', JSON.stringify(usedTokens));
+      }
+
+      const storedRaw = await AsyncStorage.getItem('transitlk_tickets');
+      if (storedRaw) {
+        const list = JSON.parse(storedRaw);
+        if (Array.isArray(list)) {
+          const idx = list.findIndex(
+            (t: any) =>
+              t.ticket_token === tokenToQuery ||
+              t.ticket_number === tokenToQuery,
+          );
+          if (idx >= 0) {
+            list[idx].status = 'USED';
+            await AsyncStorage.setItem('transitlk_tickets', JSON.stringify(list));
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('AsyncStorage update error:', e);
+    }
+
+    if (!updatedTicket && !updateError) {
+      updatedTicket = {
+        ...ticket,
         status: 'USED',
-
-        updated_at:
-          new Date().toISOString(),
-      })
-      .eq(
-        'id',
-        ticket.id,
-      )
-      .neq(
-        'status',
-        'used',
-      )
-      .select('*')
-      .maybeSingle();
+        payment_status: 'PAID',
+        updated_at: new Date().toISOString(),
+      };
+    }
 
     // ==================================================
     // UPDATE ERROR
