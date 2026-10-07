@@ -2,19 +2,19 @@ import React, { useState, useMemo } from 'react';
 import {
   Alert,
   Modal,
-  Pressable,
-  SafeAreaView,
-  ScrollView,
+  Pressable,  ScrollView,
   StatusBar,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons, Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 
-import PassengerBottomNav from '@/components/passenger/PassengerBottomNav';
+import BottomNavigation from '@/components/BottomNavigation';
+import PassengerHomeHeader from '@/components/passenger/PassengerHomeHeader';
 
 interface TransactionItem {
   id: string;
@@ -169,37 +169,10 @@ export default function PurchaseHistoryScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+    <SafeAreaView style={styles.safeArea} edges={['top']}>
+      <StatusBar barStyle="dark-content" backgroundColor="#F8FAFC" />
 
-      {/* Top Brand Header */}
-      <View style={styles.topHeader}>
-        <View style={styles.headerLeft}>
-          <View style={styles.logoBadge}>
-            <MaterialCommunityIcons name="subway-variant" size={20} color="#FFFFFF" />
-          </View>
-          <View style={styles.brandTitleCol}>
-            <Text style={styles.brandTitle}>TransitLK</Text>
-            <Text style={styles.brandSubtitle}>TRANSIT PASS</Text>
-          </View>
-        </View>
-
-        <View style={styles.headerRight}>
-          <View style={styles.liveGpsBadge}>
-            <View style={styles.liveGpsDot} />
-            <Text style={styles.liveGpsText}>Live GPS</Text>
-          </View>
-
-          <View style={styles.langPill}>
-            <Text style={styles.langText}>EN</Text>
-            <Ionicons name="globe-outline" size={12} color="#64748B" style={{ marginLeft: 3 }} />
-          </View>
-
-          <View style={styles.avatarCircle}>
-            <Ionicons name="person" size={14} color="#1E2B6D" />
-          </View>
-        </View>
-      </View>
+      <PassengerHomeHeader subtitle="Purchase History" />
 
       <ScrollView
         style={styles.scrollView}
@@ -460,7 +433,7 @@ export default function PurchaseHistoryScreen() {
                   )
                 }
               >
-                <MaterialCommunityIcons name="receipt" size={16} color="#1E2B6D" />
+                <MaterialCommunityIcons name="receipt" size={16} color="#002060" />
                 <Text style={styles.eReceiptButtonText}>e-Receipt</Text>
               </Pressable>
 
@@ -720,7 +693,7 @@ export default function PurchaseHistoryScreen() {
       </Modal>
 
       {/* Bottom Navigation */}
-      <PassengerBottomNav activeTab="history" />
+      <BottomNavigation />
     </SafeAreaView>
   );
 }
@@ -758,7 +731,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 12,
-    backgroundColor: '#1E2B6D',
+    backgroundColor: '#002060',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -766,16 +739,14 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
   brandTitle: {
-    fontSize: 16,
-    fontWeight: '800',
+    fontSize: 14,
+    fontWeight: 'bold',
     color: '#0F172A',
   },
   brandSubtitle: {
     fontSize: 9,
-    fontWeight: '700',
-    color: '#8E9CAE',
-    letterSpacing: 0.5,
-  },
+    fontWeight: 'bold',
+    color: '#8E9CAE',  },
   headerRight: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -798,7 +769,7 @@ const styles = StyleSheet.create({
   },
   liveGpsText: {
     fontSize: 10,
-    fontWeight: '800',
+    fontWeight: 'bold',
     color: '#059669',
   },
   langPill: {
@@ -812,8 +783,8 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   langText: {
-    fontSize: 11,
-    fontWeight: '700',
+    fontSize: 10,
+    fontWeight: 'bold',
     color: '#1E293B',
   },
   avatarCircle: {
@@ -852,11 +823,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#F1F5F9',
   },
   pageTitle: {
-    fontSize: 20,
-    fontWeight: '900',
-    color: '#0F172A',
-    letterSpacing: -0.3,
-  },
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#0F172A',  },
   headerActionBtns: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -886,18 +855,18 @@ const styles = StyleSheet.create({
   },
   searchInput: {
     flex: 1,
-    fontSize: 13,
+    fontSize: 12,
     color: '#0F172A',
     padding: 0,
   },
 
   // Smart Pass Balance Card
   smartPassCard: {
-    backgroundColor: '#1E2B6D',
+    backgroundColor: '#002060',
     borderRadius: 22,
     padding: 18,
     marginBottom: 16,
-    shadowColor: '#1E2B6D',
+    shadowColor: '#002060',
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.3,
     shadowRadius: 10,
@@ -920,10 +889,8 @@ const styles = StyleSheet.create({
   },
   smartPassTagText: {
     fontSize: 10,
-    fontWeight: '800',
-    color: '#BFDBFE',
-    letterSpacing: 0.5,
-  },
+    fontWeight: 'bold',
+    color: '#BFDBFE',  },
   topUpButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -937,8 +904,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#6EE7B7',
   },
   topUpButtonText: {
-    fontSize: 12,
-    fontWeight: '800',
+    fontSize: 11,
+    fontWeight: 'bold',
     color: '#065F46',
   },
   balanceSection: {
@@ -951,9 +918,9 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   balanceLabel: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#BFDBFE',
-    fontWeight: '500',
+    fontWeight: 'normal',
   },
   balanceCyanDot: {
     width: 6,
@@ -962,14 +929,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#38BDF8',
   },
   balanceAmount: {
-    fontSize: 30,
-    fontWeight: '900',
-    color: '#FFFFFF',
-    letterSpacing: -0.5,
-  },
-  currencyPrefix: {
     fontSize: 18,
-    fontWeight: '800',
+    fontWeight: 'bold',
+    color: '#FFFFFF',  },
+  currencyPrefix: {
+    fontSize: 15,
+    fontWeight: 'bold',
     color: '#93C5FD',
   },
   smartPassFooter: {
@@ -992,9 +957,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#34D399',
   },
   autoReloadText: {
-    fontSize: 11,
+    fontSize: 10,
     color: '#E2E8F0',
-    fontWeight: '600',
+    fontWeight: 'bold',
   },
   gatewayRow: {
     flexDirection: 'row',
@@ -1002,9 +967,9 @@ const styles = StyleSheet.create({
     gap: 5,
   },
   gatewayText: {
-    fontSize: 11,
+    fontSize: 10,
     color: '#BFDBFE',
-    fontWeight: '600',
+    fontWeight: 'bold',
   },
 
   // TRANSACTION INSPECTOR Section
@@ -1018,13 +983,11 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   inspectorHeading: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: '#0F172A',
-    letterSpacing: 0.5,
-  },
-  inspectorSub: {
     fontSize: 11,
+    fontWeight: 'bold',
+    color: '#0F172A',  },
+  inspectorSub: {
+    fontSize: 10,
     color: '#64748B',
   },
   inspectorTabsRow: {
@@ -1055,8 +1018,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#FEE2E2',
   },
   inspectorTabText: {
-    fontSize: 12,
-    fontWeight: '700',
+    fontSize: 11,
+    fontWeight: 'bold',
     color: '#64748B',
   },
   inspectorTabTextActive: {
@@ -1120,8 +1083,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#DC2626',
   },
   statusPillText: {
-    fontSize: 11,
-    fontWeight: '800',
+    fontSize: 10,
+    fontWeight: 'bold',
     color: '#059669',
   },
   statusPillTextFailed: {
@@ -1131,14 +1094,14 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
   },
   inspectedFareAmount: {
-    fontSize: 20,
-    fontWeight: '900',
+    fontSize: 16,
+    fontWeight: 'bold',
     color: '#0F172A',
   },
   inspectedFareType: {
     fontSize: 10,
     color: '#64748B',
-    fontWeight: '500',
+    fontWeight: 'normal',
   },
 
   // Inspected Route Strip
@@ -1159,27 +1122,27 @@ const styles = StyleSheet.create({
   routePill: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#1E2B6D',
+    backgroundColor: '#002060',
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 6,
   },
   routePillText: {
     fontSize: 10,
-    fontWeight: '800',
+    fontWeight: 'bold',
     color: '#FFFFFF',
   },
   plateNumberText: {
-    fontSize: 11,
-    fontWeight: '600',
+    fontSize: 10,
+    fontWeight: 'bold',
     color: '#64748B',
   },
   routeStopsRow: {
     marginTop: 2,
   },
   inspectedStopsText: {
-    fontSize: 14,
-    fontWeight: '800',
+    fontSize: 13,
+    fontWeight: 'bold',
     color: '#0F172A',
   },
 
@@ -1195,11 +1158,11 @@ const styles = StyleSheet.create({
   metaLabel: {
     fontSize: 10,
     color: '#64748B',
-    fontWeight: '500',
+    fontWeight: 'normal',
   },
   metaValue: {
-    fontSize: 12,
-    fontWeight: '700',
+    fontSize: 11,
+    fontWeight: 'bold',
     color: '#0F172A',
     marginTop: 2,
   },
@@ -1215,8 +1178,8 @@ const styles = StyleSheet.create({
   },
   clearingBannerText: {
     fontSize: 10,
-    fontWeight: '700',
-    color: '#1E2B6D',
+    fontWeight: 'bold',
+    color: '#002060',
   },
 
   // Inspected Action Buttons
@@ -1235,23 +1198,23 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   eReceiptButtonText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#1E2B6D',
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: '#002060',
   },
   viewRouteButton: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#1E2B6D',
+    backgroundColor: '#002060',
     borderRadius: 12,
     paddingVertical: 10,
     gap: 6,
   },
   viewRouteButtonText: {
-    fontSize: 13,
-    fontWeight: '700',
+    fontSize: 12,
+    fontWeight: 'bold',
     color: '#FFFFFF',
   },
 
@@ -1266,12 +1229,12 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   statementHeading: {
-    fontSize: 15,
-    fontWeight: '800',
+    fontSize: 14,
+    fontWeight: 'bold',
     color: '#0F172A',
   },
   statementMonthText: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#64748B',
   },
   chipsRow: {
@@ -1286,16 +1249,16 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
   },
   statementChipActive: {
-    backgroundColor: '#1E2B6D',
+    backgroundColor: '#002060',
   },
   statementChipText: {
-    fontSize: 11,
-    fontWeight: '600',
+    fontSize: 10,
+    fontWeight: 'bold',
     color: '#64748B',
   },
   statementChipTextActive: {
     color: '#FFFFFF',
-    fontWeight: '700',
+    fontWeight: 'bold',
   },
 
   // Txn List
@@ -1317,7 +1280,7 @@ const styles = StyleSheet.create({
     elevation: 1,
   },
   txnItemCardSelected: {
-    borderColor: '#1E2B6D',
+    borderColor: '#002060',
     borderWidth: 1.5,
   },
   txnItemPressed: {
@@ -1356,8 +1319,8 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   txnTitle: {
-    fontSize: 13,
-    fontWeight: '800',
+    fontSize: 12,
+    fontWeight: 'bold',
     color: '#0F172A',
     flex: 1,
   },
@@ -1371,7 +1334,7 @@ const styles = StyleSheet.create({
   },
   settledBadgeText: {
     fontSize: 9,
-    fontWeight: '700',
+    fontWeight: 'bold',
     color: '#059669',
   },
   failedBadge: {
@@ -1379,7 +1342,7 @@ const styles = StyleSheet.create({
   },
   failedBadgeText: {
     fontSize: 9,
-    fontWeight: '700',
+    fontWeight: 'bold',
     color: '#DC2626',
   },
   topupBadge: {
@@ -1387,7 +1350,7 @@ const styles = StyleSheet.create({
   },
   topupBadgeText: {
     fontSize: 9,
-    fontWeight: '700',
+    fontWeight: 'bold',
     color: '#2563EB',
   },
   disputeBadge: {
@@ -1395,15 +1358,15 @@ const styles = StyleSheet.create({
   },
   disputeBadgeText: {
     fontSize: 9,
-    fontWeight: '700',
+    fontWeight: 'bold',
     color: '#7C3AED',
   },
   statusBadgeText: {
     fontSize: 9,
-    fontWeight: '700',
+    fontWeight: 'bold',
   },
   txnSubText: {
-    fontSize: 11,
+    fontSize: 10,
     color: '#64748B',
     marginTop: 2,
   },
@@ -1419,8 +1382,8 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
   },
   txnAmountText: {
-    fontSize: 13,
-    fontWeight: '800',
+    fontSize: 12,
+    fontWeight: 'bold',
     color: '#0F172A',
   },
   creditAmountText: {
@@ -1431,7 +1394,7 @@ const styles = StyleSheet.create({
   },
   txnStatusSub: {
     fontSize: 10,
-    fontWeight: '600',
+    fontWeight: 'bold',
     marginTop: 2,
   },
   paidStatus: {
@@ -1460,7 +1423,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: '#1E2B6D',
+    backgroundColor: '#002060',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1468,8 +1431,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   hotlineTitle: {
-    fontSize: 12,
-    fontWeight: '800',
+    fontSize: 11,
+    fontWeight: 'bold',
     color: '#0F172A',
   },
   hotlineSub: {
@@ -1479,15 +1442,15 @@ const styles = StyleSheet.create({
   },
   callNowBtn: {
     borderWidth: 1,
-    borderColor: '#1E2B6D',
+    borderColor: '#002060',
     borderRadius: 12,
     paddingHorizontal: 12,
     paddingVertical: 6,
   },
   callNowText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#1E2B6D',
+    fontSize: 10,
+    fontWeight: 'bold',
+    color: '#002060',
   },
 
   // Top-Up Modal
@@ -1511,13 +1474,13 @@ const styles = StyleSheet.create({
     elevation: 6,
   },
   modalHeading: {
-    fontSize: 17,
-    fontWeight: '800',
+    fontSize: 15,
+    fontWeight: 'bold',
     color: '#0F172A',
     marginBottom: 4,
   },
   modalSub: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#64748B',
     marginBottom: 16,
   },
@@ -1534,11 +1497,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   quickAmtBtnActive: {
-    backgroundColor: '#1E2B6D',
+    backgroundColor: '#002060',
   },
   quickAmtText: {
-    fontSize: 11,
-    fontWeight: '700',
+    fontSize: 10,
+    fontWeight: 'bold',
     color: '#334155',
   },
   quickAmtTextActive: {
@@ -1551,20 +1514,20 @@ const styles = StyleSheet.create({
     borderColor: '#CBD5E1',
     paddingHorizontal: 14,
     paddingVertical: 10,
-    fontSize: 16,
-    fontWeight: '700',
+    fontSize: 14,
+    fontWeight: 'bold',
     color: '#0F172A',
     marginBottom: 14,
   },
   confirmTopUpBtn: {
-    backgroundColor: '#1E2B6D',
+    backgroundColor: '#002060',
     borderRadius: 12,
     paddingVertical: 12,
     alignItems: 'center',
   },
   confirmTopUpText: {
-    fontSize: 14,
-    fontWeight: '800',
+    fontSize: 13,
+    fontWeight: 'bold',
     color: '#FFFFFF',
   },
 });

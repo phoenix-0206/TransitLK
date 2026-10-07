@@ -23,7 +23,9 @@ export default function PassengerBottomNav({
       return;
     }
 
-    if (tab === 'routes') {
+    if (tab === 'home') {
+      router.push('/home' as any);
+    } else if (tab === 'routes') {
       router.push('/passenger/search' as any);
     } else if (tab === 'tickets' || tab === 'history') {
       router.push('/passenger/purchase-history' as any);

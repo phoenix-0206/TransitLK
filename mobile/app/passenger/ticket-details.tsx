@@ -2,18 +2,18 @@ import React, { useState, useMemo } from 'react';
 import {
   Alert,
   Image,
-  Pressable,
-  SafeAreaView,
-  ScrollView,
+  Pressable,  ScrollView,
   StatusBar,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons, Feather } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 
-import PassengerBottomNav from '@/components/passenger/PassengerBottomNav';
+import BottomNavigation from '@/components/BottomNavigation';
+import PassengerHomeHeader from '@/components/passenger/PassengerHomeHeader';
 
 export default function TicketDetailsScreen() {
   const router = useRouter();
@@ -111,44 +111,10 @@ export default function TicketDetailsScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+    <SafeAreaView style={styles.safeArea} edges={['top']}>
+      <StatusBar barStyle="dark-content" backgroundColor="#F8FAFC" />
 
-      {/* Top Header matching Figma */}
-      <View style={styles.topHeader}>
-        <View style={styles.headerLeft}>
-          <Pressable
-            style={({ pressed }) => [styles.backButton, pressed && styles.pressedState]}
-            onPress={() => router.back()}
-            accessibilityLabel="Go back to select trip"
-          >
-            <Ionicons name="chevron-back" size={22} color="#0F172A" />
-          </Pressable>
-
-          <View style={styles.brandContainer}>
-            <View style={styles.logoBadge}>
-              <MaterialCommunityIcons name="ticket-confirmation-outline" size={20} color="#FFFFFF" />
-            </View>
-            <View style={styles.brandTitleCol}>
-              <View style={styles.brandNameRow}>
-                <Text style={styles.brandTitle}>TransitLK</Text>
-                <View style={styles.liveGpsBadge}>
-                  <View style={styles.liveGpsDot} />
-                  <Text style={styles.liveGpsText}>LIVE GPS</Text>
-                </View>
-              </View>
-              <Text style={styles.brandSubtitle}>Routes Booking</Text>
-            </View>
-          </View>
-        </View>
-
-        <Pressable
-          style={styles.notificationBtn}
-          onPress={() => Alert.alert('Notifications', 'No new transit alerts for this route.')}
-        >
-          <Ionicons name="notifications-outline" size={22} color="#1E293B" />
-        </Pressable>
-      </View>
+      <PassengerHomeHeader subtitle="Ticket Details" />
 
       <ScrollView
         style={styles.scrollView}
@@ -300,7 +266,7 @@ export default function TicketDetailsScreen() {
                 disabled={adultCount === 0}
                 hitSlop={6}
               >
-                <Ionicons name="remove" size={16} color={adultCount === 0 ? '#CBD5E1' : '#1E2B6D'} />
+                <Ionicons name="remove" size={16} color={adultCount === 0 ? '#CBD5E1' : '#002060'} />
               </Pressable>
 
               <Text style={styles.stepperValue}>{adultCount}</Text>
@@ -344,7 +310,7 @@ export default function TicketDetailsScreen() {
                 disabled={studentCount === 0}
                 hitSlop={6}
               >
-                <Ionicons name="remove" size={16} color={studentCount === 0 ? '#CBD5E1' : '#1E2B6D'} />
+                <Ionicons name="remove" size={16} color={studentCount === 0 ? '#CBD5E1' : '#002060'} />
               </Pressable>
 
               <Text style={styles.stepperValue}>{studentCount}</Text>
@@ -388,7 +354,7 @@ export default function TicketDetailsScreen() {
                 disabled={childCount === 0}
                 hitSlop={6}
               >
-                <Ionicons name="remove" size={16} color={childCount === 0 ? '#CBD5E1' : '#1E2B6D'} />
+                <Ionicons name="remove" size={16} color={childCount === 0 ? '#CBD5E1' : '#002060'} />
               </Pressable>
 
               <Text style={styles.stepperValue}>{childCount}</Text>
@@ -530,7 +496,7 @@ export default function TicketDetailsScreen() {
       </View>
 
       {/* Bottom Navigation matching design */}
-      <PassengerBottomNav activeTab="tickets" />
+      <BottomNavigation />
     </SafeAreaView>
   );
 }
@@ -585,7 +551,7 @@ const styles = StyleSheet.create({
     width: 34,
     height: 34,
     borderRadius: 10,
-    backgroundColor: '#1E2B6D',
+    backgroundColor: '#002060',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -598,8 +564,8 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   brandTitle: {
-    fontSize: 16,
-    fontWeight: '800',
+    fontSize: 14,
+    fontWeight: 'bold',
     color: '#0F172A',
   },
   liveGpsBadge: {
@@ -619,12 +585,12 @@ const styles = StyleSheet.create({
   },
   liveGpsText: {
     fontSize: 9,
-    fontWeight: '800',
+    fontWeight: 'bold',
     color: '#059669',
   },
   brandSubtitle: {
-    fontSize: 11,
-    fontWeight: '600',
+    fontSize: 10,
+    fontWeight: 'bold',
     color: '#64748B',
     marginTop: 1,
   },
@@ -669,8 +635,8 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   stepLabelCompleted: {
-    fontSize: 11,
-    fontWeight: '700',
+    fontSize: 10,
+    fontWeight: 'bold',
     color: '#059669',
   },
   stepConnectorCompleted: {
@@ -684,20 +650,20 @@ const styles = StyleSheet.create({
     width: 26,
     height: 26,
     borderRadius: 13,
-    backgroundColor: '#1E2B6D',
+    backgroundColor: '#002060',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 4,
   },
   stepNumberActive: {
     color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '800',
+    fontSize: 11,
+    fontWeight: 'bold',
   },
   stepLabelActive: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: '#1E2B6D',
+    fontSize: 10,
+    fontWeight: 'bold',
+    color: '#002060',
   },
   stepConnectorUpcoming: {
     flex: 1,
@@ -717,12 +683,12 @@ const styles = StyleSheet.create({
   },
   stepNumberUpcoming: {
     color: '#94A3B8',
-    fontSize: 12,
-    fontWeight: '700',
+    fontSize: 11,
+    fontWeight: 'bold',
   },
   stepLabelUpcoming: {
-    fontSize: 11,
-    fontWeight: '500',
+    fontSize: 10,
+    fontWeight: 'normal',
     color: '#94A3B8',
   },
 
@@ -752,15 +718,15 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   busNumberBadge: {
-    backgroundColor: '#1E2B6D',
+    backgroundColor: '#002060',
     paddingHorizontal: 9,
     paddingVertical: 4,
     borderRadius: 8,
   },
   busNumberText: {
     color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '800',
+    fontSize: 11,
+    fontWeight: 'bold',
   },
   serviceClassBadge: {
     flexDirection: 'row',
@@ -775,8 +741,8 @@ const styles = StyleSheet.create({
   },
   serviceClassText: {
     color: '#059669',
-    fontSize: 11,
-    fontWeight: '700',
+    fontSize: 10,
+    fontWeight: 'bold',
   },
   changeTripButton: {
     flexDirection: 'row',
@@ -787,8 +753,8 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   changeTripText: {
-    fontSize: 12,
-    fontWeight: '700',
+    fontSize: 11,
+    fontWeight: 'bold',
     color: '#2563EB',
   },
   changeTripIcon: {
@@ -810,7 +776,7 @@ const styles = StyleSheet.create({
     width: 10,
     height: 10,
     borderRadius: 5,
-    backgroundColor: '#1E2B6D',
+    backgroundColor: '#002060',
     marginTop: 5,
     marginRight: 10,
   },
@@ -818,12 +784,12 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   routeStopName: {
-    fontSize: 16,
-    fontWeight: '800',
+    fontSize: 14,
+    fontWeight: 'bold',
     color: '#0F172A',
   },
   routeStopTime: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#64748B',
     marginTop: 2,
   },
@@ -853,8 +819,8 @@ const styles = StyleSheet.create({
     marginRight: 4,
   },
   corridorText: {
-    fontSize: 11,
-    fontWeight: '600',
+    fontSize: 10,
+    fontWeight: 'bold',
     color: '#475569',
   },
   busInfoBanner: {
@@ -875,26 +841,26 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   busRegText: {
-    fontSize: 11,
-    fontWeight: '600',
+    fontSize: 10,
+    fontWeight: 'bold',
     color: '#475569',
   },
   baseFareText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#1E2B6D',
+    fontSize: 10,
+    fontWeight: 'bold',
+    color: '#002060',
   },
 
   // Live En Route Card
   enRouteCard: {
-    backgroundColor: '#1E2B6D',
+    backgroundColor: '#002060',
     borderRadius: 20,
     padding: 16,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 20,
-    shadowColor: '#1E2B6D',
+    shadowColor: '#002060',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.25,
     shadowRadius: 8,
@@ -924,17 +890,15 @@ const styles = StyleSheet.create({
   enRoutePillText: {
     color: '#FFFFFF',
     fontSize: 10,
-    fontWeight: '800',
-    letterSpacing: 0.5,
-  },
+    fontWeight: 'bold',  },
   enRouteTitle: {
-    fontSize: 15,
-    fontWeight: '800',
+    fontSize: 14,
+    fontWeight: 'bold',
     color: '#FFFFFF',
     marginBottom: 4,
   },
   enRouteSubtitle: {
-    fontSize: 11,
+    fontSize: 10,
     color: '#CBD5E1',
     lineHeight: 15,
   },
@@ -956,12 +920,12 @@ const styles = StyleSheet.create({
     marginRight: 8,
   },
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: '800',
+    fontSize: 15,
+    fontWeight: 'bold',
     color: '#0F172A',
   },
   sectionSubtitle: {
-    fontSize: 11,
+    fontSize: 10,
     color: '#64748B',
     marginTop: 2,
   },
@@ -973,7 +937,7 @@ const styles = StyleSheet.create({
   },
   maxLimitText: {
     fontSize: 10,
-    fontWeight: '700',
+    fontWeight: 'bold',
     color: '#4338CA',
   },
 
@@ -1006,8 +970,8 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   passengerName: {
-    fontSize: 15,
-    fontWeight: '800',
+    fontSize: 14,
+    fontWeight: 'bold',
     color: '#0F172A',
   },
   regularBadge: {
@@ -1018,7 +982,7 @@ const styles = StyleSheet.create({
   },
   regularBadgeText: {
     fontSize: 10,
-    fontWeight: '700',
+    fontWeight: 'bold',
     color: '#475569',
   },
   discountBadge: {
@@ -1029,18 +993,18 @@ const styles = StyleSheet.create({
   },
   discountBadgeText: {
     fontSize: 10,
-    fontWeight: '700',
+    fontWeight: 'bold',
     color: '#059669',
   },
   passengerDesc: {
-    fontSize: 11,
+    fontSize: 10,
     color: '#64748B',
     marginTop: 2,
   },
   passengerUnitPrice: {
-    fontSize: 13,
-    fontWeight: '800',
-    color: '#1E2B6D',
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: '#002060',
     marginTop: 4,
   },
   stepperControl: {
@@ -1060,11 +1024,11 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
   stepperBtnPlus: {
-    backgroundColor: '#1E2B6D',
+    backgroundColor: '#002060',
   },
   stepperValue: {
-    fontSize: 16,
-    fontWeight: '800',
+    fontSize: 14,
+    fontWeight: 'bold',
     color: '#0F172A',
     minWidth: 16,
     textAlign: 'center',
@@ -1079,12 +1043,12 @@ const styles = StyleSheet.create({
     borderTopColor: '#F8FAFC',
   },
   subtotalLabel: {
-    fontSize: 11,
+    fontSize: 10,
     color: '#64748B',
   },
   subtotalValue: {
-    fontSize: 13,
-    fontWeight: '800',
+    fontSize: 12,
+    fontWeight: 'bold',
     color: '#0F172A',
   },
 
@@ -1119,8 +1083,8 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   addonCheckboxChecked: {
-    backgroundColor: '#1E2B6D',
-    borderColor: '#1E2B6D',
+    backgroundColor: '#002060',
+    borderColor: '#002060',
   },
   addonTitleWrap: {
     flex: 1,
@@ -1132,17 +1096,17 @@ const styles = StyleSheet.create({
     marginBottom: 3,
   },
   addonTitle: {
-    fontSize: 13,
-    fontWeight: '800',
+    fontSize: 12,
+    fontWeight: 'bold',
     color: '#0F172A',
   },
   addonPrice: {
-    fontSize: 12,
-    fontWeight: '800',
+    fontSize: 11,
+    fontWeight: 'bold',
     color: '#059669',
   },
   addonDesc: {
-    fontSize: 11,
+    fontSize: 10,
     color: '#64748B',
     lineHeight: 15,
   },
@@ -1171,13 +1135,11 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   protectionTitle: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: '#065F46',
-    letterSpacing: 0.3,
-  },
+    fontSize: 10,
+    fontWeight: 'bold',
+    color: '#065F46',  },
   protectionSubtitle: {
-    fontSize: 11,
+    fontSize: 10,
     color: '#047857',
     marginTop: 1,
   },
@@ -1197,8 +1159,8 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   breakdownHeading: {
-    fontSize: 16,
-    fontWeight: '800',
+    fontSize: 14,
+    fontWeight: 'bold',
     color: '#0F172A',
     marginBottom: 12,
   },
@@ -1209,7 +1171,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   breakdownLabel: {
-    fontSize: 13,
+    fontSize: 12,
     color: '#475569',
   },
   feeInfoRow: {
@@ -1217,13 +1179,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   breakdownAmount: {
-    fontSize: 13,
-    fontWeight: '700',
+    fontSize: 12,
+    fontWeight: 'bold',
     color: '#0F172A',
   },
   freeFeeText: {
-    fontSize: 12,
-    fontWeight: '800',
+    fontSize: 11,
+    fontWeight: 'bold',
     color: '#059669',
   },
   breakdownDivider: {
@@ -1237,21 +1199,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   totalLabel: {
-    fontSize: 13,
-    fontWeight: '800',
+    fontSize: 12,
+    fontWeight: 'bold',
     color: '#0F172A',
   },
   totalSubtitle: {
-    fontSize: 11,
+    fontSize: 10,
     color: '#64748B',
     marginTop: 2,
   },
   totalAmount: {
-    fontSize: 22,
-    fontWeight: '900',
-    color: '#1E2B6D',
-    letterSpacing: -0.4,
-  },
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#002060',  },
 
   // Offline Notice Card
   offlineNoticeCard: {
@@ -1272,7 +1232,7 @@ const styles = StyleSheet.create({
   },
   offlineNoticeText: {
     flex: 1,
-    fontSize: 11,
+    fontSize: 10,
     color: '#64748B',
     lineHeight: 16,
   },
@@ -1298,24 +1258,24 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   bottomTicketsCount: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#64748B',
-    fontWeight: '500',
+    fontWeight: 'normal',
   },
   bottomTotalAmount: {
-    fontSize: 18,
-    fontWeight: '900',
-    color: '#1E2B6D',
+    fontSize: 15,
+    fontWeight: 'bold',
+    color: '#002060',
   },
   proceedButton: {
-    backgroundColor: '#1E2B6D',
+    backgroundColor: '#002060',
     borderRadius: 14,
     paddingHorizontal: 22,
     paddingVertical: 14,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    shadowColor: '#1E2B6D',
+    shadowColor: '#002060',
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.25,
     shadowRadius: 6,
@@ -1326,8 +1286,8 @@ const styles = StyleSheet.create({
     transform: [{ scale: 0.99 }],
   },
   proceedButtonText: {
-    fontSize: 15,
-    fontWeight: '800',
+    fontSize: 14,
+    fontWeight: 'bold',
     color: '#FFFFFF',
   },
 });

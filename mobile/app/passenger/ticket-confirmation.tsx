@@ -1,18 +1,20 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Alert,
-  Pressable,
-  SafeAreaView,
-  ScrollView,
+  Pressable,  ScrollView,
   StatusBar,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons, Feather } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import QRCode from 'react-native-qrcode-svg';
 
-import PassengerBottomNav from '@/components/passenger/PassengerBottomNav';
+import BottomNavigation from '@/components/BottomNavigation';
+import PassengerHomeHeader from '@/components/passenger/PassengerHomeHeader';
 
 export default function TicketConfirmationScreen() {
   const router = useRouter();
@@ -44,6 +46,103 @@ export default function TicketConfirmationScreen() {
   const paymentMethod = params.paymentMethod || 'LankaPay / Visa •••• 4242';
   const passengerDetails = params.passengerDetails || '2 Adults';
 
+  // Generate real QR code payload for conductor scanner / gate validator
+  const qrCodeData = useMemo(() => {
+    return JSON.stringify({
+      app: 'TransitLK',
+      ticket_token: bookingRef,
+      ticket_number: bookingRef,
+      route_number: routeNumber,
+      route_name: serviceName,
+      service_name: serviceName,
+      origin: originName,
+      origin_name: originName,
+      destination: destinationName,
+      destination_name: destinationName,
+      departure_time: departureTime,
+      arrival_time: arrivalTime,
+      travel_date: travelDate,
+      fare: totalPayable,
+      amount: totalPayable,
+      passenger_count: params.totalTickets || '1',
+      passenger_type: passengerDetails,
+      payment_method: paymentMethod,
+      status: 'VALID',
+      payment_status: 'PAID',
+      issued_at: new Date().toISOString(),
+    });
+  }, [
+    bookingRef,
+    routeNumber,
+    serviceName,
+    originName,
+    destinationName,
+    departureTime,
+    arrivalTime,
+    travelDate,
+    totalPayable,
+    params.totalTickets,
+    passengerDetails,
+    paymentMethod,
+  ]);
+
+  // Persist digital ticket to AsyncStorage for conductor scanner verification
+  useEffect(() => {
+    async function persistTicket() {
+      try {
+        const ticketRecord = {
+          ticket_token: bookingRef,
+          ticket_number: bookingRef,
+          route_number: routeNumber,
+          route_name: serviceName,
+          service_name: serviceName,
+          origin: originName,
+          origin_name: originName,
+          destination: destinationName,
+          destination_name: destinationName,
+          departure_time: departureTime,
+          arrival_time: arrivalTime,
+          travel_date: travelDate,
+          fare: totalPayable,
+          amount: totalPayable,
+          passenger_count: params.totalTickets || '1',
+          passenger_type: passengerDetails,
+          payment_method: paymentMethod,
+          status: 'VALID',
+          payment_status: 'PAID',
+          created_at: new Date().toISOString(),
+        };
+
+        const existingRaw = await AsyncStorage.getItem('transitlk_tickets');
+        const list = existingRaw ? JSON.parse(existingRaw) : [];
+        const existingIdx = list.findIndex((item: any) => item.ticket_token === bookingRef);
+        if (existingIdx >= 0) {
+          list[existingIdx] = ticketRecord;
+        } else {
+          list.unshift(ticketRecord);
+        }
+        await AsyncStorage.setItem('transitlk_tickets', JSON.stringify(list.slice(0, 50)));
+      } catch (err) {
+        console.warn('Could not persist ticket to local storage:', err);
+      }
+    }
+
+    void persistTicket();
+  }, [
+    bookingRef,
+    routeNumber,
+    serviceName,
+    originName,
+    destinationName,
+    departureTime,
+    arrivalTime,
+    travelDate,
+    totalPayable,
+    params.totalTickets,
+    passengerDetails,
+    paymentMethod,
+  ]);
+
   // Live countdown timer for dynamic ticket QR code security refresh
   const [countdown, setCountdown] = useState(41);
 
@@ -70,47 +169,10 @@ export default function TicketConfirmationScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+    <SafeAreaView style={styles.safeArea} edges={['top']}>
+      <StatusBar barStyle="dark-content" backgroundColor="#F8FAFC" />
 
-      {/* Top Header matching Figma */}
-      <View style={styles.topHeader}>
-        <View style={styles.headerLeft}>
-          <Pressable
-            style={({ pressed }) => [styles.backButton, pressed && styles.pressedState]}
-            onPress={() => router.back()}
-            accessibilityLabel="Go back"
-          >
-            <Ionicons name="chevron-back" size={22} color="#0F172A" />
-          </Pressable>
-
-          <View style={styles.brandContainer}>
-            <View style={styles.logoBadge}>
-              <MaterialCommunityIcons name="ticket-confirmation-outline" size={20} color="#FFFFFF" />
-            </View>
-            <View style={styles.brandTitleCol}>
-              <View style={styles.brandNameRow}>
-                <Text style={styles.brandTitle}>TransitLK</Text>
-                <View style={styles.liveGpsBadge}>
-                  <View style={styles.liveGpsDot} />
-                  <Text style={styles.liveGpsText}>LIVE GPS</Text>
-                </View>
-              </View>
-              <Text style={styles.brandSubtitle}>Bus Booking Payment</Text>
-            </View>
-          </View>
-        </View>
-
-        <View style={styles.headerRight}>
-          <Pressable
-            style={styles.notificationBtn}
-            onPress={() => Alert.alert('Notifications', 'Payment completed and ticket issued.')}
-          >
-            <Ionicons name="notifications-outline" size={22} color="#1E293B" />
-          </Pressable>
-          <View style={styles.avatarCircle} />
-        </View>
-      </View>
+      <PassengerHomeHeader subtitle="Confirmation" />
 
       <ScrollView
         style={styles.scrollView}
@@ -176,7 +238,7 @@ export default function TicketConfirmationScreen() {
               onPress={handleCopyRef}
               hitSlop={8}
             >
-              <Feather name="copy" size={12} color="#1E2B6D" />
+              <Feather name="copy" size={12} color="#002060" />
               <Text style={styles.copyButtonText}>Copy</Text>
             </Pressable>
           </View>
@@ -221,7 +283,7 @@ export default function TicketConfirmationScreen() {
               <View style={styles.corridorIconRow}>
                 <View style={styles.corridorDot} />
                 <View style={styles.corridorLine} />
-                <Ionicons name="bus" size={16} color="#1E2B6D" style={{ marginHorizontal: 2 }} />
+                <Ionicons name="bus" size={16} color="#002060" style={{ marginHorizontal: 2 }} />
                 <View style={styles.corridorLine} />
                 <View style={styles.corridorDot} />
               </View>
@@ -263,43 +325,39 @@ export default function TicketConfirmationScreen() {
               <Text style={styles.refreshesText}>Refreshes in {countdown}s</Text>
             </View>
 
-            {/* Stylized QR Code Graphic */}
+            {/* Real QR Code Generator */}
             <View style={styles.qrContainer}>
               <View style={styles.qrFrame}>
-                {/* QR Pattern visual simulation with position detection markers */}
-                <View style={styles.qrCornerTopLeft}>
-                  <View style={styles.qrCornerInner} />
-                </View>
-                <View style={styles.qrCornerTopRight}>
-                  <View style={styles.qrCornerInner} />
-                </View>
-                <View style={styles.qrCornerBottomLeft}>
-                  <View style={styles.qrCornerInner} />
-                </View>
-
-                {/* Simulated QR matrix dots */}
-                <View style={styles.qrMatrixGrid}>
-                  <View style={styles.matrixDotRow}>
-                    <View style={styles.mDot} /><View style={styles.mDotEmpty} /><View style={styles.mDot} /><View style={styles.mDot} /><View style={styles.mDotEmpty} /><View style={styles.mDot} />
-                  </View>
-                  <View style={styles.matrixDotRow}>
-                    <View style={styles.mDotEmpty} /><View style={styles.mDot} /><View style={styles.mDotEmpty} /><View style={styles.mDotEmpty} /><View style={styles.mDot} /><View style={styles.mDotEmpty} />
-                  </View>
-                  <View style={styles.matrixDotRow}>
-                    <View style={styles.mDot} /><View style={styles.mDot} /><View style={styles.mDotEmpty} /><View style={styles.mDot} /><View style={styles.mDotEmpty} /><View style={styles.mDot} />
-                  </View>
-                </View>
-
-                {/* Center Verified Checkmark Seal */}
-                <View style={styles.qrCenterSeal}>
-                  <Ionicons name="checkmark" size={14} color="#FFFFFF" />
-                </View>
+                <QRCode
+                  value={qrCodeData}
+                  size={180}
+                  color="#002060"
+                  backgroundColor="#FFFFFF"
+                  ecl="M"
+                  quietZone={8}
+                />
               </View>
             </View>
 
             <Text style={styles.qrInstructionText}>
               Show this QR code to the bus conductor or tap device against the contactless gate validator.
             </Text>
+
+            {/* Quick action for Conductor inspection */}
+            <Pressable
+              style={styles.conductorButton}
+              onPress={() => {
+                router.push({
+                  pathname: '/conductor/scanner' as any,
+                  params: {
+                    testToken: bookingRef,
+                  },
+                });
+              }}
+            >
+              <MaterialCommunityIcons name="qrcode-scan" size={15} color="#002060" />
+              <Text style={styles.conductorButtonText}>Test in Conductor Scanner</Text>
+            </Pressable>
           </View>
         </View>
 
@@ -309,7 +367,7 @@ export default function TicketConfirmationScreen() {
             style={styles.walletButton}
             onPress={handleAddToWallet}
           >
-            <Ionicons name="wallet-outline" size={16} color="#1E2B6D" />
+            <Ionicons name="wallet-outline" size={16} color="#002060" />
             <Text style={styles.walletButtonText}>Add to Apple / Google Wallet</Text>
           </Pressable>
 
@@ -385,7 +443,25 @@ export default function TicketConfirmationScreen() {
             styles.viewTicketsButton,
             pressed && styles.viewTicketsButtonPressed,
           ]}
-          onPress={() => router.push('/passenger/purchase-history' as any)}
+          onPress={() =>
+            router.push({
+              pathname: '/transit-pass' as any,
+              params: {
+                bookingRef,
+                routeNumber,
+                serviceName,
+                originName,
+                destinationName,
+                travelDate,
+                departureTime,
+                arrivalTime,
+                totalPayable,
+                passengerDetails,
+                totalTickets: String(params.totalTickets || '1'),
+                paymentMethod,
+              },
+            })
+          }
         >
           <MaterialCommunityIcons name="ticket-outline" size={18} color="#FFFFFF" />
           <Text style={styles.viewTicketsButtonText}>View in My Tickets</Text>
@@ -394,7 +470,7 @@ export default function TicketConfirmationScreen() {
         {/* Secondary: Back to Home */}
         <Pressable
           style={styles.backHomeButton}
-          onPress={() => router.push('/passenger/search' as any)}
+          onPress={() => router.replace('/home' as any)}
         >
           <Ionicons name="home-outline" size={15} color="#475569" style={{ marginRight: 6 }} />
           <Text style={styles.backHomeButtonText}>Back to Home</Text>
@@ -402,7 +478,7 @@ export default function TicketConfirmationScreen() {
       </ScrollView>
 
       {/* Bottom Navigation Tabs */}
-      <PassengerBottomNav activeTab="tickets" />
+      <BottomNavigation />
     </SafeAreaView>
   );
 }
@@ -456,7 +532,7 @@ const styles = StyleSheet.create({
     width: 34,
     height: 34,
     borderRadius: 10,
-    backgroundColor: '#1E2B6D',
+    backgroundColor: '#002060',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -469,8 +545,8 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   brandTitle: {
-    fontSize: 16,
-    fontWeight: '800',
+    fontSize: 14,
+    fontWeight: 'bold',
     color: '#0F172A',
   },
   liveGpsBadge: {
@@ -490,12 +566,12 @@ const styles = StyleSheet.create({
   },
   liveGpsText: {
     fontSize: 9,
-    fontWeight: '800',
+    fontWeight: 'bold',
     color: '#059669',
   },
   brandSubtitle: {
-    fontSize: 11,
-    fontWeight: '600',
+    fontSize: 10,
+    fontWeight: 'bold',
     color: '#64748B',
     marginTop: 1,
   },
@@ -551,8 +627,8 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   stepLabelCompleted: {
-    fontSize: 11,
-    fontWeight: '600',
+    fontSize: 10,
+    fontWeight: 'bold',
     color: '#059669',
   },
   stepConnectorActive: {
@@ -566,15 +642,15 @@ const styles = StyleSheet.create({
     width: 24,
     height: 24,
     borderRadius: 12,
-    backgroundColor: '#1E2B6D',
+    backgroundColor: '#002060',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 4,
   },
   stepLabelTicket: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: '#1E2B6D',
+    fontSize: 10,
+    fontWeight: 'bold',
+    color: '#002060',
   },
 
   // Success Hero Card
@@ -607,13 +683,13 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   successHeading: {
-    fontSize: 20,
-    fontWeight: '900',
+    fontSize: 16,
+    fontWeight: 'bold',
     color: '#0F172A',
     marginBottom: 4,
   },
   successSubtext: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#64748B',
     textAlign: 'center',
     lineHeight: 17,
@@ -639,9 +715,9 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   referenceText: {
-    fontSize: 13,
-    fontWeight: '800',
-    color: '#1E2B6D',
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: '#002060',
   },
   copyButton: {
     flexDirection: 'row',
@@ -653,9 +729,9 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   copyButtonText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#1E2B6D',
+    fontSize: 10,
+    fontWeight: 'bold',
+    color: '#002060',
   },
   paymentMetaLine: {
     flexDirection: 'row',
@@ -663,9 +739,9 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   paymentMetaText: {
-    fontSize: 11,
+    fontSize: 10,
     color: '#64748B',
-    fontWeight: '500',
+    fontWeight: 'normal',
   },
 
   // Boarding Pass Ticket Card
@@ -683,7 +759,7 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   passHeaderStrip: {
-    backgroundColor: '#1E2B6D',
+    backgroundColor: '#002060',
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
@@ -702,13 +778,13 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
   },
   passRouteBadgeText: {
-    fontSize: 12,
-    fontWeight: '900',
-    color: '#1E2B6D',
+    fontSize: 11,
+    fontWeight: 'bold',
+    color: '#002060',
   },
   passServiceName: {
-    fontSize: 13,
-    fontWeight: '800',
+    fontSize: 12,
+    fontWeight: 'bold',
     color: '#FFFFFF',
   },
   reservedPassBadge: {
@@ -728,7 +804,7 @@ const styles = StyleSheet.create({
   },
   reservedPassText: {
     fontSize: 10,
-    fontWeight: '700',
+    fontWeight: 'bold',
     color: '#A7F3D0',
   },
   passStationsSection: {
@@ -741,13 +817,13 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   stationTimeText: {
-    fontSize: 18,
-    fontWeight: '900',
+    fontSize: 15,
+    fontWeight: 'bold',
     color: '#0F172A',
   },
   stationNameText: {
-    fontSize: 14,
-    fontWeight: '700',
+    fontSize: 13,
+    fontWeight: 'bold',
     color: '#1E293B',
     marginTop: 2,
   },
@@ -762,7 +838,7 @@ const styles = StyleSheet.create({
   },
   corridorMinsText: {
     fontSize: 10,
-    fontWeight: '700',
+    fontWeight: 'bold',
     color: '#059669',
     marginBottom: 2,
   },
@@ -800,18 +876,18 @@ const styles = StyleSheet.create({
   passDetailsLabel: {
     fontSize: 10,
     color: '#64748B',
-    fontWeight: '600',
+    fontWeight: 'bold',
   },
   passDetailsValue: {
-    fontSize: 12,
-    fontWeight: '800',
+    fontSize: 11,
+    fontWeight: 'bold',
     color: '#0F172A',
     marginTop: 2,
   },
   passFareTotal: {
-    fontSize: 14,
-    fontWeight: '900',
-    color: '#1E2B6D',
+    fontSize: 13,
+    fontWeight: 'bold',
+    color: '#002060',
     marginTop: 2,
   },
 
@@ -873,7 +949,7 @@ const styles = StyleSheet.create({
   },
   liveTicketText: {
     fontSize: 10,
-    fontWeight: '800',
+    fontWeight: 'bold',
     color: '#059669',
   },
   liveDivider: {
@@ -882,7 +958,7 @@ const styles = StyleSheet.create({
   },
   refreshesText: {
     fontSize: 10,
-    fontWeight: '600',
+    fontWeight: 'bold',
     color: '#059669',
   },
 
@@ -890,107 +966,48 @@ const styles = StyleSheet.create({
   qrContainer: {
     padding: 12,
     backgroundColor: '#FFFFFF',
-    borderRadius: 18,
+    borderRadius: 20,
     borderWidth: 1.5,
     borderColor: '#E2E8F0',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 6,
-    elevation: 2,
-    marginBottom: 14,
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 3,
+    marginBottom: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   qrFrame: {
-    width: 170,
-    height: 170,
-    position: 'relative',
     backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  qrCornerTopLeft: {
-    position: 'absolute',
-    top: 4,
-    left: 4,
-    width: 44,
-    height: 44,
-    borderWidth: 6,
-    borderColor: '#1E2B6D',
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  qrCornerTopRight: {
-    position: 'absolute',
-    top: 4,
-    right: 4,
-    width: 44,
-    height: 44,
-    borderWidth: 6,
-    borderColor: '#1E2B6D',
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  qrCornerBottomLeft: {
-    position: 'absolute',
-    bottom: 4,
-    left: 4,
-    width: 44,
-    height: 44,
-    borderWidth: 6,
-    borderColor: '#1E2B6D',
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  qrCornerInner: {
-    width: 16,
-    height: 16,
-    backgroundColor: '#1E2B6D',
-    borderRadius: 4,
-  },
-  qrMatrixGrid: {
-    position: 'absolute',
-    width: 70,
-    height: 60,
-    justifyContent: 'space-around',
-  },
-  matrixDotRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-  },
-  mDot: {
-    width: 8,
-    height: 8,
-    backgroundColor: '#1E2B6D',
-    borderRadius: 2,
-  },
-  mDotEmpty: {
-    width: 8,
-    height: 8,
-  },
-  qrCenterSeal: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: '#10B981',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 3,
-    borderColor: '#FFFFFF',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.15,
-    shadowRadius: 3,
-    elevation: 3,
+    padding: 4,
+    borderRadius: 12,
   },
   qrInstructionText: {
-    fontSize: 11,
+    fontSize: 10,
     color: '#64748B',
     textAlign: 'center',
     lineHeight: 16,
     paddingHorizontal: 12,
+  },
+  conductorButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 12,
+    backgroundColor: '#EFF6FF',
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+  },
+  conductorButtonText: {
+    fontSize: 11,
+    fontWeight: 'bold',
+    color: '#002060',
   },
 
   // Wallet & Share Action Row
@@ -1010,9 +1027,9 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   walletButtonText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#1E2B6D',
+    fontSize: 11,
+    fontWeight: 'bold',
+    color: '#002060',
   },
   shareButton: {
     flex: 1,
@@ -1027,8 +1044,8 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   shareButtonText: {
-    fontSize: 12,
-    fontWeight: '700',
+    fontSize: 11,
+    fontWeight: 'bold',
     color: '#334155',
   },
 
@@ -1058,8 +1075,8 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   dispatchHeading: {
-    fontSize: 14,
-    fontWeight: '800',
+    fontSize: 13,
+    fontWeight: 'bold',
     color: '#0F172A',
   },
   busPlateBadge: {
@@ -1070,7 +1087,7 @@ const styles = StyleSheet.create({
   },
   busPlateText: {
     fontSize: 10,
-    fontWeight: '800',
+    fontWeight: 'bold',
     color: '#059669',
   },
   approachingBox: {
@@ -1096,13 +1113,13 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   approachingTitle: {
-    fontSize: 13,
-    fontWeight: '800',
+    fontSize: 12,
+    fontWeight: 'bold',
     color: '#0F172A',
   },
   approachingEta: {
-    fontSize: 11,
-    fontWeight: '600',
+    fontSize: 10,
+    fontWeight: 'bold',
     color: '#059669',
     marginTop: 2,
   },
@@ -1122,8 +1139,8 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   trackBusText: {
-    fontSize: 12,
-    fontWeight: '700',
+    fontSize: 11,
+    fontWeight: 'bold',
     color: '#1D4ED8',
   },
   receiptButton: {
@@ -1144,14 +1161,14 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   receiptText: {
-    fontSize: 12,
-    fontWeight: '600',
+    fontSize: 11,
+    fontWeight: 'bold',
     color: '#334155',
   },
   receiptSizeText: {
     fontSize: 10,
     color: '#94A3B8',
-    fontWeight: '600',
+    fontWeight: 'bold',
   },
   hotlineRow: {
     flexDirection: 'row',
@@ -1165,26 +1182,26 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   hotlineLabel: {
-    fontSize: 11,
+    fontSize: 10,
     color: '#64748B',
-    fontWeight: '500',
+    fontWeight: 'normal',
   },
   hotlineDial: {
-    fontSize: 11,
-    fontWeight: '700',
+    fontSize: 10,
+    fontWeight: 'bold',
     color: '#059669',
   },
 
   // Primary Action Button
   viewTicketsButton: {
-    backgroundColor: '#1E2B6D',
+    backgroundColor: '#002060',
     borderRadius: 16,
     paddingVertical: 16,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    shadowColor: '#1E2B6D',
+    shadowColor: '#002060',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.25,
     shadowRadius: 8,
@@ -1196,8 +1213,8 @@ const styles = StyleSheet.create({
     transform: [{ scale: 0.99 }],
   },
   viewTicketsButtonText: {
-    fontSize: 15,
-    fontWeight: '800',
+    fontSize: 14,
+    fontWeight: 'bold',
     color: '#FFFFFF',
   },
 
@@ -1209,8 +1226,8 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   backHomeButtonText: {
-    fontSize: 13,
-    fontWeight: '700',
+    fontSize: 12,
+    fontWeight: 'bold',
     color: '#475569',
   },
 });

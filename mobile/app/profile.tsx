@@ -284,6 +284,12 @@ export default function ProfileScreen() {
 
         <Text style={styles.sectionHeader}>ACCOUNT &amp; PRIVACY</Text>
         <View style={styles.menuCard}>
+          <MenuItem
+            icon="receipt-outline"
+            title="Transaction History"
+            subtitle="View ticket payments and top-up records"
+            onPress={() => router.push('/passenger/purchase-history' as any)}
+          />
           <MenuItem icon="notifications-outline" title="Notifications" subtitle="Live bus alerts and service updates" onPress={() => showComingSoon('Notifications', 'Notification preferences will be available here soon.')} />
           <MenuItem icon="language-outline" title="Language" subtitle="English • සිංහල available soon" onPress={() => showComingSoon('Language', 'Language selection will be available here soon.')} />
           <MenuItem icon="shield-checkmark-outline" title="Privacy & permissions" subtitle="Location and account access" onPress={() => showComingSoon('Privacy & permissions', 'Review location and account permissions in your device settings.')} />

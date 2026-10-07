@@ -1,22 +1,22 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import {
   Alert,
   FlatList,
   Modal,
   Pressable,
-  SafeAreaView,
   ScrollView,
   StatusBar,
   StyleSheet,
   Text,
   TextInput,
+  TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons, Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 
-import RouteSearchHeader from '@/components/passenger/RouteSearchHeader';
-import PassengerBottomNav from '@/components/passenger/PassengerBottomNav';
+import BottomNavigation from '@/components/BottomNavigation';
 import { RecentSearchItem, TransportMode } from '@/types/passenger';
 
 // Popular transit hubs in Sri Lanka for quick autocomplete/selection
@@ -71,7 +71,7 @@ export default function SearchRouteScreen() {
       origin: 'Pettah',
       destination: 'Kandy',
       routeTag: 'AC-01',
-      subText: 'Tomorrow • 07:00 • Bus (Intercity AC)',
+      subText: 'Tomorrow â€¢ 07:00 â€¢ Bus (Intercity AC)',
       dateStr: '25 Oct 2026',
       timeStr: '07:00',
       mode: 'bus',
@@ -80,7 +80,7 @@ export default function SearchRouteScreen() {
       id: 'rec-2',
       origin: 'Kurunegala',
       destination: 'Colombo Fort',
-      subText: '18 Oct • Route 05 Semi-Luxury',
+      subText: '18 Oct â€¢ Route 05 Semi-Luxury',
       dateStr: '18 Oct 2026',
       timeStr: '06:30',
       mode: 'bus',
@@ -172,17 +172,48 @@ export default function SearchRouteScreen() {
   );
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={styles.safeArea} edges={['top']}>
       <StatusBar barStyle="dark-content" backgroundColor="#F8FAFC" />
-
-      {/* Top App Header */}
-      <RouteSearchHeader />
 
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
+        {/* Header Bar (matches Home) */}
+        <View style={styles.header}>
+          <View style={styles.brandRow}>
+            <View style={styles.logoBadge}>
+              <Ionicons name="bus" size={18} color="#FFF" />
+            </View>
+            <View>
+              <Text style={styles.brandTitle}>TransitLK</Text>
+              <Text style={styles.brandSub}>Search</Text>
+            </View>
+          </View>
+
+          <View style={styles.headerActions}>
+            <View style={styles.langPill}>
+              <Text style={styles.langTextActive}>EN</Text>
+              <Text style={styles.langText}>à·ƒà·’</Text>
+            </View>
+
+            <TouchableOpacity
+              style={styles.iconCircle}
+              onPress={() => router.push('/modal')}
+            >
+              <Ionicons name="notifications-outline" size={18} color="#002060" />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.profileCircle}
+              onPress={() => router.push('/profile')}
+            >
+              <Ionicons name="person" size={16} color="#FFF" />
+            </TouchableOpacity>
+          </View>
+        </View>
+
         {/* Page Title & Filter Row */}
         <View style={styles.titleSection}>
           <Text style={styles.pageTitle}>Search / Select Route</Text>
@@ -524,7 +555,7 @@ export default function SearchRouteScreen() {
                   <View style={styles.locationListTextCol}>
                     <Text style={styles.locationListName}>{item.name}</Text>
                     <Text style={styles.locationListSubtitle}>
-                      {item.province} • {item.tag}
+                      {item.province} â€¢ {item.tag}
                     </Text>
                   </View>
                   {item.route !== 'All' && (
@@ -690,8 +721,8 @@ export default function SearchRouteScreen() {
         </Pressable>
       </Modal>
 
-      {/* Bottom Navigation matching Figma */}
-      <PassengerBottomNav activeTab="routes" />
+      {/* Bottom Navigation (same as Home) */}
+      <BottomNavigation />
     </SafeAreaView>
   );
 }
@@ -705,8 +736,69 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingHorizontal: 20,
-    paddingBottom: 30,
+    padding: 16,
+    paddingBottom: 40,
+  },
+
+  // Header (matches Home)
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  brandRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  logoBadge: {
+    backgroundColor: '#002060',
+    padding: 6,
+    borderRadius: 8,
+  },
+  brandTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#002060',
+  },
+  brandSub: {
+    fontSize: 10,
+    color: '#64748B',
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  langPill: {
+    flexDirection: 'row',
+    backgroundColor: '#002060',
+    padding: 4,
+    borderRadius: 12,
+    gap: 4,
+  },
+  langTextActive: {
+    color: '#FFF',
+    fontWeight: 'bold',
+    fontSize: 10,
+  },
+  langText: {
+    color: '#94A3B8',
+    fontSize: 10,
+  },
+  iconCircle: {
+    padding: 6,
+    borderRadius: 20,
+    backgroundColor: '#EEF2FF',
+  },
+  profileCircle: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#002060',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 
   // Title section
@@ -714,54 +806,39 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: 6,
-    marginBottom: 16,
+    marginBottom: 12,
   },
   pageTitle: {
-    fontSize: 24,
-    fontWeight: '800',
-    color: '#0F172A',
-    letterSpacing: -0.4,
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#002060',
   },
   filterIconButton: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1.2,
-    borderColor: '#E2E8F0',
+    backgroundColor: '#EEF2FF',
+    padding: 6,
+    borderRadius: 6,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 4,
-    elevation: 2,
   },
   pressedState: {
-    backgroundColor: '#F1F5F9',
+    backgroundColor: '#E0E7FF',
   },
 
   // Route card container
   routeCardContainer: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 22,
-    padding: 12,
+    backgroundColor: '#FFF',
+    borderRadius: 12,
+    padding: 10,
     borderWidth: 1,
-    borderColor: '#EDF2F7',
+    borderColor: '#CBD5E1',
     position: 'relative',
-    shadowColor: '#64748B',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.06,
-    shadowRadius: 12,
-    elevation: 3,
   },
 
   // Inner Stop Input Cards
   stopInputCard: {
     backgroundColor: '#F8FAFC',
-    borderRadius: 16,
-    padding: 14,
+    borderRadius: 10,
+    padding: 12,
     borderWidth: 1,
     borderColor: '#F1F5F9',
   },
@@ -769,53 +846,52 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 6,
   },
   dotLabelRow: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   blueDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 3.5,
-    backgroundColor: '#3B82F6',
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#002060',
     marginRight: 6,
   },
   greenDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 3.5,
-    backgroundColor: '#10B981',
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#0D9488',
     marginRight: 6,
   },
   stopLabelText: {
-    fontSize: 11,
-    fontWeight: '800',
+    fontSize: 10,
+    fontWeight: 'bold',
     color: '#64748B',
-    letterSpacing: 0.6,
   },
   originTagBadge: {
     backgroundColor: '#EEF2FF',
-    paddingHorizontal: 9,
-    paddingVertical: 3,
-    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 8,
   },
   originTagText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#4338CA',
+    fontSize: 10,
+    fontWeight: 'bold',
+    color: '#002060',
   },
   destTagBadge: {
-    backgroundColor: '#ECFDF5',
-    paddingHorizontal: 9,
-    paddingVertical: 3,
-    borderRadius: 10,
+    backgroundColor: '#CCFBF1',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 8,
   },
   destTagText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#059669',
+    fontSize: 10,
+    fontWeight: 'bold',
+    color: '#0D9488',
   },
 
   // Stop Value row
@@ -824,48 +900,46 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   originIconSquare: {
-    width: 34,
-    height: 34,
-    borderRadius: 10,
-    backgroundColor: '#EFF6FF',
+    width: 30,
+    height: 30,
+    borderRadius: 8,
+    backgroundColor: '#EEF2FF',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 10,
   },
   destIconSquare: {
-    width: 34,
-    height: 34,
-    borderRadius: 10,
-    backgroundColor: '#ECFDF5',
+    width: 30,
+    height: 30,
+    borderRadius: 8,
+    backgroundColor: '#CCFBF1',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 10,
   },
   stopValueText: {
     flex: 1,
-    fontSize: 17,
-    fontWeight: '700',
+    fontSize: 14,
+    fontWeight: 'bold',
     color: '#0F172A',
   },
   placeholderText: {
     color: '#94A3B8',
-    fontWeight: '500',
+    fontWeight: 'normal',
   },
   clearIconPressable: {
     padding: 4,
   },
   routeBadge: {
-    backgroundColor: '#F1F5F9',
-    paddingHorizontal: 9,
-    paddingVertical: 4,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
+    backgroundColor: '#002060',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
   },
   routeBadgeText: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: '#334155',
+    fontSize: 11,
+    fontWeight: 'bold',
+    color: '#FFF',
   },
 
   // Floating swap button
@@ -877,153 +951,129 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   swapButton: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: '#1E2B6D',
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#002060',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#1E2B6D',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.35,
-    shadowRadius: 5,
-    elevation: 5,
     marginTop: -1,
   },
   swapButtonPressed: {
-    backgroundColor: '#172254',
+    opacity: 0.85,
     transform: [{ scale: 0.95 }],
   },
 
   // Date and Time Row
   dateTimeRow: {
     flexDirection: 'row',
-    gap: 12,
-    marginTop: 14,
+    gap: 10,
+    marginTop: 12,
   },
   dateTimeCard: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 18,
-    padding: 14,
+    backgroundColor: '#FFF',
+    borderRadius: 12,
+    padding: 12,
     borderWidth: 1,
-    borderColor: '#EDF2F7',
-    shadowColor: '#64748B',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 6,
-    elevation: 2,
+    borderColor: '#CBD5E1',
   },
   dateTimeLabel: {
     fontSize: 10,
-    fontWeight: '800',
-    color: '#94A3B8',
-    letterSpacing: 0.6,
-    marginBottom: 6,
+    fontWeight: 'bold',
+    color: '#64748B',
+    marginBottom: 4,
   },
   dateTimeValueRow: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   dateTimeValueText: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#0F172A',
+    fontSize: 13,
+    fontWeight: 'bold',
+    color: '#002060',
     marginLeft: 6,
     flex: 1,
   },
   nowBadge: {
-    backgroundColor: '#ECFDF5',
-    paddingHorizontal: 7,
-    paddingVertical: 3,
-    borderRadius: 7,
+    backgroundColor: '#DCFCE7',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
   },
   nowBadgePressed: {
-    backgroundColor: '#D1FAE5',
+    backgroundColor: '#BBF7D0',
   },
   nowBadgeText: {
     fontSize: 10,
-    fontWeight: '800',
-    color: '#10B981',
+    fontWeight: 'bold',
+    color: '#166534',
   },
 
   // Mode Toggle Bar
   modeToggleContainer: {
     flexDirection: 'row',
-    backgroundColor: '#EEF2F6',
-    borderRadius: 22,
-    padding: 4,
-    marginTop: 14,
+    backgroundColor: '#EEF2FF',
+    borderRadius: 10,
+    padding: 3,
+    marginTop: 12,
   },
   modeSegment: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 10,
-    borderRadius: 18,
+    paddingVertical: 9,
+    borderRadius: 8,
     gap: 6,
   },
   modeSegmentActive: {
-    backgroundColor: '#FFFFFF',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
-    elevation: 2,
+    backgroundColor: '#FFF',
   },
   modeActiveDot: {
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: '#10B981',
+    backgroundColor: '#0D9488',
   },
   modeSegmentText: {
-    fontSize: 13,
-    fontWeight: '600',
+    fontSize: 12,
     color: '#64748B',
   },
   modeSegmentTextActive: {
-    fontWeight: '800',
-    color: '#1E2B6D',
+    fontWeight: 'bold',
+    color: '#002060',
   },
 
   // Main CTA Button
   searchButton: {
-    backgroundColor: '#263380',
-    borderRadius: 18,
-    paddingVertical: 16,
+    backgroundColor: '#002060',
+    height: 42,
+    borderRadius: 8,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 16,
+    marginTop: 14,
     gap: 8,
-    shadowColor: '#263380',
-    shadowOffset: { width: 0, height: 5 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 4,
   },
   searchButtonPressed: {
-    backgroundColor: '#1D2766',
-    transform: [{ scale: 0.99 }],
+    opacity: 0.9,
   },
   searchButtonText: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: '#FFFFFF',
-    letterSpacing: 0.2,
+    fontSize: 13,
+    fontWeight: 'bold',
+    color: '#FFF',
   },
 
   // Recent Searches
   recentSection: {
-    marginTop: 24,
+    marginTop: 20,
   },
   recentHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 10,
   },
   recentHeaderLeft: {
     flexDirection: 'row',
@@ -1031,40 +1081,34 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   recentHeaderTitle: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: '#475569',
-    letterSpacing: 0.6,
+    fontSize: 15,
+    fontWeight: 'bold',
+    color: '#002060',
   },
   clearRecentText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#2563EB',
+    fontSize: 11,
+    fontWeight: 'bold',
+    color: '#002060',
   },
   emptyRecentCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 20,
+    backgroundColor: '#FFF',
+    borderRadius: 10,
+    padding: 14,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#F1F5F9',
+    borderColor: '#CBD5E1',
   },
   emptyRecentText: {
-    fontSize: 13,
-    color: '#94A3B8',
+    fontSize: 12,
+    color: '#64748B',
   },
   recentCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 18,
-    padding: 16,
+    backgroundColor: '#FFF',
+    borderRadius: 12,
+    padding: 12,
     marginBottom: 10,
     borderWidth: 1,
-    borderColor: '#EDF2F7',
-    shadowColor: '#64748B',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.03,
-    shadowRadius: 5,
-    elevation: 2,
+    borderColor: '#CBD5E1',
   },
   recentCardPressed: {
     backgroundColor: '#F8FAFC',
@@ -1081,41 +1125,38 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
   },
   recentPlaceName: {
-    fontSize: 16,
-    fontWeight: '800',
+    fontSize: 14,
+    fontWeight: 'bold',
     color: '#0F172A',
   },
   recentArrowIcon: {
     marginHorizontal: 6,
   },
   recentTagBadge: {
-    backgroundColor: '#FEF3C7',
-    borderWidth: 1,
-    borderColor: '#FDE68A',
-    borderRadius: 6,
-    paddingHorizontal: 7,
+    backgroundColor: '#002060',
+    borderRadius: 4,
+    paddingHorizontal: 6,
     paddingVertical: 2,
     marginLeft: 8,
   },
   recentTagText: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: '#B45309',
+    fontSize: 10,
+    fontWeight: 'bold',
+    color: '#FFF',
   },
   chevronCircle: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: '#F8FAFC',
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#EEF2FF',
     alignItems: 'center',
     justifyContent: 'center',
     marginLeft: 8,
   },
   recentSubText: {
-    fontSize: 12,
+    fontSize: 10,
     color: '#64748B',
-    fontWeight: '500',
-    marginTop: 6,
+    marginTop: 4,
   },
 
   // Location Picker Sheet Modal
@@ -1125,53 +1166,55 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   locationModalSheet: {
-    backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
+    backgroundColor: '#FFF',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
     maxHeight: '80%',
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
     paddingBottom: 30,
     paddingTop: 12,
   },
   modalDragHandle: {
     width: 40,
-    height: 5,
-    borderRadius: 2.5,
+    height: 4,
+    borderRadius: 2,
     backgroundColor: '#CBD5E1',
     alignSelf: 'center',
-    marginBottom: 14,
+    marginBottom: 12,
   },
   modalHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 14,
+    marginBottom: 12,
   },
   locationModalTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#0F172A',
+    fontSize: 15,
+    fontWeight: 'bold',
+    color: '#002060',
   },
   locationSearchInputRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F1F5F9',
-    borderRadius: 14,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    backgroundColor: '#FFF',
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    height: 44,
     marginBottom: 12,
     gap: 8,
   },
   locationSearchInput: {
     flex: 1,
-    fontSize: 14,
+    fontSize: 12,
     color: '#0F172A',
     padding: 0,
   },
   locationListItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 12,
+    paddingVertical: 10,
     borderBottomWidth: 1,
     borderBottomColor: '#F1F5F9',
   },
@@ -1179,67 +1222,62 @@ const styles = StyleSheet.create({
     backgroundColor: '#F8FAFC',
   },
   locationListIconWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    backgroundColor: '#F1F5F9',
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: '#EEF2FF',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 12,
+    marginRight: 10,
   },
   locationListTextCol: {
     flex: 1,
   },
   locationListName: {
-    fontSize: 15,
-    fontWeight: '700',
+    fontSize: 13,
+    fontWeight: 'bold',
     color: '#0F172A',
   },
   locationListSubtitle: {
-    fontSize: 12,
+    fontSize: 10,
     color: '#64748B',
     marginTop: 2,
   },
   locationRouteBadge: {
-    backgroundColor: '#E2E8F0',
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
+    backgroundColor: '#002060',
+    borderRadius: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
   },
   locationRouteBadgeText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#334155',
+    fontSize: 10,
+    fontWeight: 'bold',
+    color: '#FFF',
   },
 
   // Option Picker Modal (Date/Time/Preferences)
   pickerModalContent: {
     margin: 20,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 22,
-    padding: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    elevation: 8,
+    backgroundColor: '#FFF',
+    borderRadius: 14,
+    padding: 16,
     alignSelf: 'center',
     width: '90%',
     maxWidth: 340,
   },
   pickerModalTitle: {
-    fontSize: 17,
-    fontWeight: '800',
-    color: '#0F172A',
-    marginBottom: 14,
+    fontSize: 15,
+    fontWeight: 'bold',
+    color: '#002060',
+    marginBottom: 12,
   },
   pickerOption: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 10,
     backgroundColor: '#F8FAFC',
     marginBottom: 8,
   },
@@ -1249,42 +1287,42 @@ const styles = StyleSheet.create({
     borderColor: '#C7D2FE',
   },
   pickerOptionText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#334155',
+    fontSize: 12,
+    color: '#475569',
   },
   pickerOptionTextSelected: {
-    color: '#1E2B6D',
-    fontWeight: '800',
+    color: '#002060',
+    fontWeight: 'bold',
   },
   preferenceRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 12,
+    paddingVertical: 10,
     borderBottomWidth: 1,
     borderBottomColor: '#F1F5F9',
   },
   prefHeading: {
-    fontSize: 14,
-    fontWeight: '700',
+    fontSize: 13,
+    fontWeight: 'bold',
     color: '#0F172A',
   },
   prefSub: {
-    fontSize: 12,
+    fontSize: 10,
     color: '#64748B',
     marginTop: 2,
   },
   doneFilterButton: {
-    backgroundColor: '#1E2B6D',
-    borderRadius: 14,
-    paddingVertical: 12,
+    backgroundColor: '#002060',
+    height: 42,
+    borderRadius: 8,
     alignItems: 'center',
-    marginTop: 16,
+    justifyContent: 'center',
+    marginTop: 14,
   },
   doneFilterButtonText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: 'bold',
+    color: '#FFF',
   },
 });

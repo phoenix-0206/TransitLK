@@ -281,15 +281,20 @@ export default function HomeDashboardScreen() {
             color="#64748B"
           />
 
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search bus, train or station (138, Fort, Kandy)..."
-            placeholderTextColor="#94A3B8"
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            onSubmitEditing={handleSearch}
-            returnKeyType="search"
-          />
+          <TouchableOpacity
+            style={{ flex: 1 }}
+            activeOpacity={0.7}
+            onPress={() => router.push('/passenger/search' as any)}
+          >
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Search bus, train or station (138, Fort, Kandy)..."
+              placeholderTextColor="#94A3B8"
+              value={searchQuery}
+              editable={false}
+              pointerEvents="none"
+            />
+          </TouchableOpacity>
 
           <TouchableOpacity>
             <Ionicons

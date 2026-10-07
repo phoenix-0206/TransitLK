@@ -165,7 +165,7 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: '#030A1B' },
   safeArea: { flex: 1, paddingHorizontal: 20, justifyContent: 'space-between' },
   networkPanel: { height: 145, marginHorizontal: -20, backgroundColor: '#061B43', overflow: 'hidden', borderBottomLeftRadius: 18, borderBottomRightRadius: 18 },
-  gridOverlay: { ...StyleSheet.absoluteFillObject, opacity: 0.18, borderBottomWidth: 1, borderBottomColor: '#2B5682' },
+  gridOverlay: { ...StyleSheet.absoluteFill, opacity: 0.18, borderBottomWidth: 1, borderBottomColor: '#2B5682' },
   nodePill: { position: 'absolute', backgroundColor: '#0A2A62', borderRadius: 9, paddingHorizontal: 9, paddingVertical: 5, minWidth: 118 },
   colomboPill: { top: 28, left: 52 },
   kandyPill: { top: 8, right: 34 },

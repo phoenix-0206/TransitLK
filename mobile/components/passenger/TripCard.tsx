@@ -203,9 +203,9 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   cardSelected: {
-    borderColor: '#1E2B6D',
+    borderColor: '#002060',
     borderWidth: 2,
-    shadowColor: '#1E2B6D',
+    shadowColor: '#002060',
     shadowOpacity: 0.12,
     shadowRadius: 10,
     elevation: 4,
@@ -234,7 +234,7 @@ const styles = StyleSheet.create({
     marginRight: 10,
   },
   routeBadgeSelected: {
-    backgroundColor: '#1E2B6D',
+    backgroundColor: '#002060',
   },
   routeBadgeDefault: {
     backgroundColor: '#EFF6FF',
@@ -242,8 +242,8 @@ const styles = StyleSheet.create({
     borderColor: '#DBEAFE',
   },
   routeBadgeText: {
-    fontSize: 13,
-    fontWeight: '800',
+    fontSize: 12,
+    fontWeight: 'bold',
   },
   routeBadgeTextSelected: {
     color: '#FFFFFF',
@@ -255,19 +255,19 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   serviceNameText: {
-    fontSize: 15,
-    fontWeight: '700',
+    fontSize: 14,
+    fontWeight: 'bold',
     color: '#0F172A',
   },
   viaText: {
-    fontSize: 11,
+    fontSize: 10,
     color: '#64748B',
     marginTop: 2,
   },
 
   // Option Badges
   selectedOptionBadge: {
-    backgroundColor: '#1E2B6D',
+    backgroundColor: '#002060',
     borderRadius: 6,
     paddingHorizontal: 8,
     paddingVertical: 4,
@@ -275,9 +275,7 @@ const styles = StyleSheet.create({
   selectedOptionBadgeText: {
     color: '#FFFFFF',
     fontSize: 10,
-    fontWeight: '800',
-    letterSpacing: 0.5,
-  },
+    fontWeight: 'bold',  },
   tagBadge: {
     paddingHorizontal: 8,
     paddingVertical: 3,
@@ -285,7 +283,7 @@ const styles = StyleSheet.create({
   },
   tagBadgeText: {
     fontSize: 10,
-    fontWeight: '700',
+    fontWeight: 'bold',
   },
   fastestBadge: {
     backgroundColor: '#FAF5FF',
@@ -317,15 +315,13 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   fareAmount: {
-    fontSize: 22,
-    fontWeight: '900',
-    color: '#0F172A',
-    letterSpacing: -0.5,
-  },
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#0F172A',  },
   fareType: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#64748B',
-    fontWeight: '500',
+    fontWeight: 'normal',
   },
   liveGpsBadge: {
     backgroundColor: '#ECFDF5',
@@ -334,13 +330,13 @@ const styles = StyleSheet.create({
     borderRadius: 6,
   },
   liveGpsBadgeText: {
-    fontSize: 11,
-    fontWeight: '700',
+    fontSize: 10,
+    fontWeight: 'bold',
     color: '#059669',
   },
   durationTopText: {
-    fontSize: 12,
-    fontWeight: '600',
+    fontSize: 11,
+    fontWeight: 'bold',
     color: '#64748B',
   },
 
@@ -365,13 +361,13 @@ const styles = StyleSheet.create({
     gap: 5,
   },
   scheduleTimeText: {
-    fontSize: 13,
-    fontWeight: '800',
+    fontSize: 12,
+    fontWeight: 'bold',
     color: '#0F172A',
   },
   scheduleStationText: {
-    fontSize: 13,
-    fontWeight: '600',
+    fontSize: 12,
+    fontWeight: 'bold',
     color: '#334155',
   },
   scheduleArrow: {
@@ -381,8 +377,8 @@ const styles = StyleSheet.create({
     marginLeft: 6,
   },
   durationRightText: {
-    fontSize: 12,
-    fontWeight: '600',
+    fontSize: 11,
+    fontWeight: 'bold',
     color: '#64748B',
   },
   smallRouteTag: {
@@ -391,8 +387,8 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
   smallRouteTagText: {
-    fontSize: 11,
-    fontWeight: '800',
+    fontSize: 10,
+    fontWeight: 'bold',
   },
   acTag: {
     backgroundColor: '#EFF6FF',
@@ -422,13 +418,13 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   footerText: {
-    fontSize: 11,
+    fontSize: 10,
     color: '#64748B',
-    fontWeight: '500',
+    fontWeight: 'normal',
   },
   footerTextHighlight: {
     color: '#059669',
-    fontWeight: '700',
+    fontWeight: 'bold',
   },
   footerDot: {
     color: '#CBD5E1',
@@ -441,7 +437,7 @@ const styles = StyleSheet.create({
     width: 24,
     height: 24,
     borderRadius: 12,
-    backgroundColor: '#1E2B6D',
+    backgroundColor: '#002060',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -451,9 +447,9 @@ const styles = StyleSheet.create({
     gap: 5,
   },
   selectLabel: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#64748B',
-    fontWeight: '500',
+    fontWeight: 'normal',
   },
   uncheckCircle: {
     width: 20,

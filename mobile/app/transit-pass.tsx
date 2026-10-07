@@ -1,19 +1,17 @@
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import React, { useState, useEffect, useMemo } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { router, useLocalSearchParams } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import QRCode from 'react-native-qrcode-svg';
 
-// The QR contains the ticket ID so a conductor scanner can read it directly.
-const TICKET_QR_DATA = 'TLK-2026-8849-B';
-
-function TransitTicketQRCode() {
+function TransitTicketQRCode({ value, bookingRef }: { value: string; bookingRef: string }) {
   return (
     <View style={styles.qrWrapper}>
       <View style={styles.qrCodeContainer}>
         <QRCode
-          value={TICKET_QR_DATA}
+          value={value}
           size={205}
           color="#002060"
           backgroundColor="#FFFFFF"
@@ -23,7 +21,7 @@ function TransitTicketQRCode() {
       </View>
 
       <Text style={styles.qrCodeText}>
-        TLK-2026-8849-B • Scan to validate ticket
+        #{bookingRef} • Scan to validate ticket
       </Text>
     </View>
   );
@@ -36,6 +34,95 @@ function goToPassengerRoute(path: string) {
 }
 
 export default function TransitPassScreen() {
+  const params = useLocalSearchParams<{
+    bookingRef?: string;
+    routeNumber?: string;
+    serviceName?: string;
+    originName?: string;
+    destinationName?: string;
+    travelDate?: string;
+    departureTime?: string;
+    arrivalTime?: string;
+    totalPayable?: string;
+    passengerDetails?: string;
+    totalTickets?: string;
+    paymentMethod?: string;
+  }>();
+
+  const [storedTicket, setStoredTicket] = useState<any>(null);
+
+  useEffect(() => {
+    async function loadLatestTicket() {
+      try {
+        const storedRaw = await AsyncStorage.getItem('transitlk_tickets');
+        if (storedRaw) {
+          const list = JSON.parse(storedRaw);
+          if (Array.isArray(list) && list.length > 0) {
+            setStoredTicket(list[0]);
+          }
+        }
+      } catch (e) {
+        console.warn('Failed to load stored ticket:', e);
+      }
+    }
+    void loadLatestTicket();
+  }, []);
+
+  // Priority: 1. URL Route params from confirmation, 2. Stored ticket from AsyncStorage, 3. Defaults
+  const bookingRef = params.bookingRef || storedTicket?.ticket_token || storedTicket?.bookingRef || 'TRX-708679-LK';
+  const routeNumber = params.routeNumber || storedTicket?.route_number || '138';
+  const serviceName = params.serviceName || storedTicket?.service_name || storedTicket?.route_name || 'SLTB Semi-Luxury';
+  const originName = params.originName || storedTicket?.origin_name || storedTicket?.origin || 'Colombo Fort';
+  const destinationName = params.destinationName || storedTicket?.destination_name || storedTicket?.destination || 'Maharagama';
+  const travelDate = params.travelDate || storedTicket?.travel_date || 'Today, 24 Oct 2026';
+  const departureTime = params.departureTime || storedTicket?.departure_time || '14:30';
+  const arrivalTime = params.arrivalTime || storedTicket?.arrival_time || '15:18';
+  const totalPayable = params.totalPayable || storedTicket?.fare || storedTicket?.amount || '185.00';
+  const passengerDetails = params.passengerDetails || storedTicket?.passenger_type || '2 Adult, 1 Student Concession';
+  const totalTickets = params.totalTickets || storedTicket?.passenger_count || '3';
+  const paymentMethod = params.paymentMethod || storedTicket?.payment_method || 'LankaPay / Visa •••• 4242';
+
+  // Construct the exact identical QR payload generated on ticket-confirmation.tsx
+  const qrCodeData = useMemo(() => {
+    return JSON.stringify({
+      app: 'TransitLK',
+      ticket_token: bookingRef,
+      ticket_number: bookingRef,
+      route_number: routeNumber,
+      route_name: serviceName,
+      service_name: serviceName,
+      origin: originName,
+      origin_name: originName,
+      destination: destinationName,
+      destination_name: destinationName,
+      departure_time: departureTime,
+      arrival_time: arrivalTime,
+      travel_date: travelDate,
+      fare: totalPayable,
+      amount: totalPayable,
+      passenger_count: totalTickets,
+      passenger_type: passengerDetails,
+      payment_method: paymentMethod,
+      status: 'VALID',
+      payment_status: 'PAID',
+      issued_at: storedTicket?.created_at || new Date().toISOString(),
+    });
+  }, [
+    bookingRef,
+    routeNumber,
+    serviceName,
+    originName,
+    destinationName,
+    departureTime,
+    arrivalTime,
+    travelDate,
+    totalPayable,
+    totalTickets,
+    passengerDetails,
+    paymentMethod,
+    storedTicket,
+  ]);
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <ScrollView
@@ -298,7 +385,7 @@ export default function TransitPassScreen() {
 
           {/* REAL SCANNABLE QR */}
 
-          <TransitTicketQRCode />
+          <TransitTicketQRCode value={qrCodeData} bookingRef={bookingRef} />
 
           <View style={styles.offlineBox}>
             <Ionicons
@@ -318,6 +405,27 @@ export default function TransitPassScreen() {
               </Text>
             </View>
           </View>
+
+          <TouchableOpacity
+            style={styles.conductorTestButton}
+            onPress={() => {
+              router.push({
+                pathname: '/conductor/scanner' as any,
+                params: {
+                  testToken: bookingRef,
+                },
+              });
+            }}
+          >
+            <MaterialCommunityIcons
+              name="qrcode-scan"
+              size={17}
+              color="#002060"
+            />
+            <Text style={styles.conductorTestButtonText}>
+              Test in Conductor Scanner
+            </Text>
+          </TouchableOpacity>
 
           <TouchableOpacity style={styles.brightnessButton}>
             <Ionicons
@@ -356,7 +464,7 @@ export default function TransitPassScreen() {
 
             <View style={styles.inTransitBadge}>
               <Text style={styles.inTransitText}>
-                In Transit
+                Active Pass
               </Text>
             </View>
           </View>
@@ -364,27 +472,27 @@ export default function TransitPassScreen() {
           <View style={styles.ticketBody}>
             <View style={styles.routeNumber}>
               <Text style={styles.routeNumberText}>
-                138
+                {routeNumber}
               </Text>
             </View>
 
             <View style={styles.routeInfo}>
               <Text style={styles.routeName}>
-                Maharagama ⇄ Fort
+                {originName} ⇄ {destinationName}
               </Text>
 
               <Text style={styles.routeType}>
-                Semi-Luxury AC Service
+                {serviceName}
               </Text>
             </View>
 
             <View style={styles.fareContainer}>
               <Text style={styles.fare}>
-                LKR 70.00
+                LKR {totalPayable}
               </Text>
 
               <Text style={styles.fareType}>
-                Standard Fare
+                {passengerDetails}
               </Text>
             </View>
           </View>
@@ -400,11 +508,11 @@ export default function TransitPassScreen() {
               </View>
 
               <Text style={styles.progressText}>
-                TAP-IN: Bambalapitiya Junc (Bay 2)
+                BOARDING: {originName}
               </Text>
 
               <Text style={styles.progressTime}>
-                14:18 PM
+                {departureTime}
               </Text>
             </View>
 
@@ -422,11 +530,11 @@ export default function TransitPassScreen() {
               </View>
 
               <Text style={styles.progressTextEnd}>
-                TAP-OUT REQUIRED: Colombo Fort
+                DESTINATION: {destinationName}
               </Text>
 
               <Text style={styles.etaText}>
-                ETA ~18 Min
+                {arrivalTime}
               </Text>
             </View>
           </View>
@@ -439,11 +547,11 @@ export default function TransitPassScreen() {
             />
 
             <Text style={styles.passcodeText}>
-              Conductor Inspection Passcode:
+              Booking Ref:
             </Text>
 
             <Text style={styles.passcode}>
-              #4829
+              #{bookingRef}
             </Text>
           </View>
         </TouchableOpacity>
@@ -604,86 +712,6 @@ export default function TransitPassScreen() {
 
         <View style={{ height: 20 }} />
       </ScrollView>
-
-      {/* Bottom Navigation */}
-
-      <View style={styles.bottomNav}>
-        <TouchableOpacity
-          style={styles.navItem}
-          onPress={() => router.replace('/(tabs)')}
-        >
-          <Ionicons
-            name="home-outline"
-            size={21}
-            color="#002060"
-          />
-
-          <Text style={styles.navActiveText}>
-            Home
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.navItem}
-          onPress={() =>
-            router.push('/interactive-route-map')
-          }
-        >
-          <Ionicons
-            name="map-outline"
-            size={21}
-            color="#64748B"
-          />
-
-          <Text style={styles.navText}>
-            Map / Track
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.navItem}
-          onPress={() =>
-            goToPassengerRoute('/search')
-          }
-        >
-          <Ionicons
-            name="ticket-outline"
-            size={21}
-            color="#64748B"
-          />
-
-          <Text style={styles.navText}>
-            Tickets
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.navItem}>
-          <Ionicons
-            name="notifications-outline"
-            size={21}
-            color="#64748B"
-          />
-
-          <Text style={styles.navText}>
-            Alerts
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.navItem}
-          onPress={() => router.push('/profile')}
-        >
-          <Ionicons
-            name="person-outline"
-            size={21}
-            color="#64748B"
-          />
-
-          <Text style={styles.navText}>
-            Profile
-          </Text>
-        </TouchableOpacity>
-      </View>
     </SafeAreaView>
   );
 }
@@ -1164,6 +1192,25 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
 
+  conductorTestButton: {
+    backgroundColor: '#EFF6FF',
+    borderRadius: 10,
+    height: 42,
+    marginTop: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+  },
+
+  conductorTestButtonText: {
+    color: '#002060',
+    fontSize: 12,
+    fontWeight: '800',
+    marginLeft: 7,
+  },
+
   brightnessButton: {
     backgroundColor: '#E9ECFF',
     borderRadius: 10,
@@ -1536,41 +1583,5 @@ const styles = StyleSheet.create({
     fontSize: 8,
     lineHeight: 12,
     marginLeft: 7,
-  },
-
-  /* Bottom Navigation */
-
-  bottomNav: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: 72,
-    backgroundColor: '#FFF',
-    borderTopWidth: 1,
-    borderTopColor: '#E2E5F0',
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    alignItems: 'center',
-  },
-
-  navItem: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    minWidth: 55,
-  },
-
-  navActiveText: {
-    color: '#002060',
-    fontSize: 8,
-    fontWeight: '800',
-    marginTop: 3,
-  },
-
-  navText: {
-    color: '#64748B',
-    fontSize: 8,
-    fontWeight: '600',
-    marginTop: 3,
   },
 });

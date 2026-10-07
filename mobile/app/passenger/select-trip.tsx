@@ -1,18 +1,18 @@
 import React, { useState, useMemo } from 'react';
 import {
-  Pressable,
-  SafeAreaView,
-  ScrollView,
+  Pressable,  ScrollView,
   StatusBar,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 
 import TripCard, { TripItem } from '@/components/passenger/TripCard';
-import PassengerBottomNav from '@/components/passenger/PassengerBottomNav';
+import BottomNavigation from '@/components/BottomNavigation';
+import PassengerHomeHeader from '@/components/passenger/PassengerHomeHeader';
 
 export default function SelectTripScreen() {
   const router = useRouter();
@@ -150,41 +150,10 @@ export default function SelectTripScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+    <SafeAreaView style={styles.safeArea} edges={['top']}>
+      <StatusBar barStyle="dark-content" backgroundColor="#F8FAFC" />
 
-      {/* Top Header Bar */}
-      <View style={styles.topHeader}>
-        <View style={styles.headerLeft}>
-          <Pressable
-            style={({ pressed }) => [styles.backButton, pressed && styles.pressedState]}
-            onPress={() => router.back()}
-            accessibilityLabel="Go back"
-          >
-            <Ionicons name="chevron-back" size={24} color="#0F172A" />
-          </Pressable>
-
-          <View style={styles.brandContainer}>
-            <View style={styles.logoBadge}>
-              <MaterialCommunityIcons name="ticket-confirmation-outline" size={20} color="#FFFFFF" />
-            </View>
-            <View style={styles.brandTextWrap}>
-              <Text style={styles.brandTitle}>TransitLK</Text>
-              <Text style={styles.brandSubtitle}>DIGITAL TICKETS • FR3</Text>
-            </View>
-          </View>
-        </View>
-
-        <View style={styles.headerRight}>
-          <View style={styles.langPill}>
-            <Text style={styles.langText}>EN</Text>
-            <Ionicons name="globe-outline" size={12} color="#64748B" style={styles.langIcon} />
-          </View>
-          <View style={styles.avatarBadge}>
-            <Text style={styles.avatarText}>SL</Text>
-          </View>
-        </View>
-      </View>
+      <PassengerHomeHeader subtitle="Select Trip" />
 
       <ScrollView
         style={styles.scrollView}
@@ -348,7 +317,7 @@ export default function SelectTripScreen() {
       </View>
 
       {/* Bottom Navigation Tabs */}
-      <PassengerBottomNav activeTab="routes" />
+      <BottomNavigation />
     </SafeAreaView>
   );
 }
@@ -402,7 +371,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 12,
-    backgroundColor: '#1E2B6D',
+    backgroundColor: '#002060',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -410,16 +379,14 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
   brandTitle: {
-    fontSize: 16,
-    fontWeight: '800',
+    fontSize: 14,
+    fontWeight: 'bold',
     color: '#0F172A',
   },
   brandSubtitle: {
     fontSize: 9,
-    fontWeight: '700',
-    color: '#8E9CAE',
-    letterSpacing: 0.5,
-  },
+    fontWeight: 'bold',
+    color: '#8E9CAE',  },
   headerRight: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -436,8 +403,8 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
   },
   langText: {
-    fontSize: 12,
-    fontWeight: '700',
+    fontSize: 11,
+    fontWeight: 'bold',
     color: '#1E293B',
   },
   langIcon: {
@@ -454,8 +421,8 @@ const styles = StyleSheet.create({
     borderColor: '#C7D2FE',
   },
   avatarText: {
-    fontSize: 12,
-    fontWeight: '800',
+    fontSize: 11,
+    fontWeight: 'bold',
     color: '#3730A3',
   },
 
@@ -472,16 +439,14 @@ const styles = StyleSheet.create({
     marginRight: 12,
   },
   screenTitle: {
-    fontSize: 24,
-    fontWeight: '900',
-    color: '#0F172A',
-    letterSpacing: -0.4,
-  },
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#0F172A',  },
   screenSubtitle: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#64748B',
     marginTop: 2,
-    fontWeight: '500',
+    fontWeight: 'normal',
   },
   stepperPill: {
     flexDirection: 'row',
@@ -504,7 +469,7 @@ const styles = StyleSheet.create({
     width: 18,
     height: 6,
     borderRadius: 3,
-    backgroundColor: '#1E2B6D',
+    backgroundColor: '#002060',
   },
   stepDotInactive: {
     width: 6,
@@ -547,22 +512,22 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
   },
   routeOriginText: {
-    fontSize: 15,
-    fontWeight: '800',
+    fontSize: 14,
+    fontWeight: 'bold',
     color: '#0F172A',
   },
   routeSummaryArrow: {
     marginHorizontal: 6,
   },
   routeDestText: {
-    fontSize: 15,
-    fontWeight: '800',
+    fontSize: 14,
+    fontWeight: 'bold',
     color: '#0F172A',
   },
   routeDateText: {
-    fontSize: 11,
+    fontSize: 10,
     color: '#64748B',
-    fontWeight: '500',
+    fontWeight: 'normal',
     marginTop: 3,
   },
   editButton: {
@@ -570,8 +535,8 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   editText: {
-    fontSize: 13,
-    fontWeight: '700',
+    fontSize: 12,
+    fontWeight: 'bold',
     color: '#2563EB',
   },
 
@@ -597,15 +562,15 @@ const styles = StyleSheet.create({
     elevation: 1,
   },
   chipItemActive: {
-    backgroundColor: '#1E2B6D',
-    borderColor: '#1E2B6D',
+    backgroundColor: '#002060',
+    borderColor: '#002060',
   },
   chipIcon: {
     marginRight: 6,
   },
   chipText: {
-    fontSize: 13,
-    fontWeight: '700',
+    fontSize: 12,
+    fontWeight: 'bold',
     color: '#1E293B',
   },
   chipTextActive: {
@@ -620,8 +585,8 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   availableCounterText: {
-    fontSize: 16,
-    fontWeight: '800',
+    fontSize: 14,
+    fontWeight: 'bold',
     color: '#0F172A',
   },
   liveSyncBadge: {
@@ -640,8 +605,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#10B981',
   },
   liveSyncText: {
-    fontSize: 11,
-    fontWeight: '700',
+    fontSize: 10,
+    fontWeight: 'bold',
     color: '#059669',
   },
 
@@ -682,28 +647,28 @@ const styles = StyleSheet.create({
     backgroundColor: '#10B981',
   },
   bottomSelectedLabel: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#475569',
-    fontWeight: '500',
+    fontWeight: 'normal',
   },
   bottomSelectedBold: {
-    fontWeight: '800',
-    color: '#1E2B6D',
+    fontWeight: 'bold',
+    color: '#002060',
   },
   bottomFareAmount: {
-    fontSize: 16,
-    fontWeight: '900',
-    color: '#1E2B6D',
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#002060',
   },
   continueButton: {
-    backgroundColor: '#263380',
+    backgroundColor: '#002060',
     borderRadius: 16,
     paddingVertical: 15,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    shadowColor: '#263380',
+    shadowColor: '#002060',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.25,
     shadowRadius: 8,
@@ -714,9 +679,7 @@ const styles = StyleSheet.create({
     transform: [{ scale: 0.99 }],
   },
   continueButtonText: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: '#FFFFFF',
-    letterSpacing: 0.2,
-  },
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#FFFFFF',  },
 });
