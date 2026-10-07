@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useEffect, useState } from 'react';
 import {
   SafeAreaView,
   ScrollView,
@@ -9,6 +10,7 @@ import {
   View,
 } from 'react-native';
 
+import { supabase } from '../../services/supabase';
 const stops = [
   {
     name: 'Pettah',
@@ -38,8 +40,93 @@ const stops = [
 ];
 
 export default function RouteDetailsScreen() {
-  const router = useRouter();
-  const { id } = useLocalSearchParams();
+const router = useRouter();
+const { id } = useLocalSearchParams();
+
+const routeNumber = Array.isArray(id) ? id[0] : id || '138';
+
+const [userId, setUserId] = useState<string | null>(null);
+const [savedRouteId, setSavedRouteId] = useState<string | null>(null);
+const [saving, setSaving] = useState(false);
+
+useEffect(() => {
+  const loadSavedRoute = async () => {
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+
+    if (userError || !user) {
+      console.log('ROUTE DETAILS USER: NO USER');
+      return;
+    }
+
+    setUserId(user.id);
+
+    const { data, error } = await supabase
+      .from('saved_routes')
+      .select('id')
+      .eq('user_id', user.id)
+      .eq('route_number', routeNumber)
+      .maybeSingle();
+
+    if (error) {
+      console.log('SAVED ROUTE READ ERROR:', error);
+      return;
+    }
+
+    setSavedRouteId(data?.id ?? null);
+  };
+
+  loadSavedRoute();
+}, [routeNumber]);
+
+const handleSaveRoute = async () => {
+  if (!userId || saving) {
+    return;
+  }
+
+  setSaving(true);
+
+  try {
+    if (savedRouteId) {
+      const { error } = await supabase
+        .from('saved_routes')
+        .delete()
+        .eq('id', savedRouteId)
+        .eq('user_id', userId);
+
+      if (error) {
+        console.log('REMOVE ROUTE ERROR:', error);
+        return;
+      }
+
+      setSavedRouteId(null);
+      console.log('ROUTE REMOVED SUCCESSFULLY');
+    } else {
+      const { data, error } = await supabase
+        .from('saved_routes')
+        .insert({
+          user_id: userId,
+          route_number: routeNumber,
+          origin: 'Pettah',
+          destination: 'Homagama',
+        })
+        .select('id')
+        .single();
+
+      if (error) {
+        console.log('SAVE ROUTE ERROR:', error);
+        return;
+      }
+
+      setSavedRouteId(data.id);
+      console.log('ROUTE SAVED SUCCESSFULLY');
+    }
+  } finally {
+    setSaving(false);
+  }
+};
 
   return (
     <SafeAreaView style={styles.container}>
@@ -272,10 +359,26 @@ export default function RouteDetailsScreen() {
         </View>
 
         {/* Save route */}
-        <TouchableOpacity style={styles.saveButton} activeOpacity={0.85}>
-          <Ionicons name="bookmark-outline" size={20} color="#FFFFFF" />
-          <Text style={styles.saveButtonText}>Save Route</Text>
-        </TouchableOpacity>
+        <TouchableOpacity
+  style={styles.saveButton}
+  activeOpacity={0.85}
+  onPress={handleSaveRoute}
+  disabled={saving || !userId}
+>
+  <Ionicons
+    name={savedRouteId ? 'bookmark' : 'bookmark-outline'}
+    size={20}
+    color="#FFFFFF"
+  />
+
+  <Text style={styles.saveButtonText}>
+    {saving
+      ? 'Please wait...'
+      : savedRouteId
+        ? 'Remove Saved Route'
+        : 'Save Route'}
+  </Text>
+</TouchableOpacity>
 
         <Text style={styles.disclaimer}>
           Arrival times and route information may change due to traffic and
