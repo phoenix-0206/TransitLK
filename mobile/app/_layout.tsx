@@ -265,6 +265,44 @@ export default function RootLayout() {
           headerShown: false,
         }}
       />
+            {/* =========================================
+          NOTIFICATIONS, CROWDING & SUPPORTING FEATURES
+          ========================================= */}
+
+      <Stack.Screen
+        name="notifications/index"
+        options={{
+          headerShown: false,
+        }}
+      />
+
+      <Stack.Screen
+        name="notifications/[id]"
+        options={{
+          headerShown: false,
+        }}
+      />
+
+      <Stack.Screen
+        name="crowding"
+        options={{
+          headerShown: false,
+        }}
+      />
+
+      <Stack.Screen
+        name="route-details/[id]"
+        options={{
+          headerShown: false,
+        }}
+      />
+
+      <Stack.Screen
+        name="settings-preferences/index"
+        options={{
+          headerShown: false,
+        }}
+      />
 
       <Stack.Screen
         name="modal"
