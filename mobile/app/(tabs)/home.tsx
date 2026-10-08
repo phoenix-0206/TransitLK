@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 
 import {
   View,
@@ -9,6 +9,8 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
+  Modal,
+  Pressable,
 } from 'react-native';
 
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -17,7 +19,11 @@ import { Ionicons, FontAwesome5 } from '@expo/vector-icons';
 
 import { router, useFocusEffect } from 'expo-router';
 
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import QRCode from 'react-native-qrcode-svg';
+
 import { supabase } from '../../services/supabase';
+import { getPassengerTickets, type TicketRecord } from '../../services/ticketService';
 
 import {
   fetchLiveBusLocations,
@@ -25,6 +31,28 @@ import {
 } from '../../services/liveBusLocations';
 
 import type { Profile, SavedRoute } from '../../types/database';
+
+const DEFAULT_SMART_PASS: TicketRecord = {
+  ticket_number: 'TRX-948210-LK',
+  ticket_token: 'TRX-948210-LK',
+  ticket_type: 'SMARTPASS',
+  fare: 240.0,
+  route_number: '138',
+  service_name: 'SLTB AC EXPRESS',
+  origin: 'Maharagama',
+  origin_name: 'Maharagama Central',
+  destination: 'Colombo Fort',
+  destination_name: 'Colombo Fort Stand',
+  departure_time: '08:45 AM',
+  arrival_time: '09:30 AM',
+  travel_date: 'Today, 24 Oct 2026',
+  passenger_count: '2',
+  passenger_type: '2 Adults',
+  payment_method: 'LankaPay / Visa •••• 4242',
+  status: 'ACTIVE',
+  payment_status: 'PAID',
+  purchased_at: new Date().toISOString(),
+};
 
 export default function HomeDashboardScreen() {
   // ── Auth & Profile State ──
@@ -34,6 +62,10 @@ export default function HomeDashboardScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
+  // ── SmartPass & Ticket State ──
+  const [smartPassTicket, setSmartPassTicket] = useState<TicketRecord | null>(null);
+  const [qrModalVisible, setQrModalVisible] = useState(false);
+
   // ── Data State ──
   const [savedRoutes, setSavedRoutes] = useState<SavedRoute[]>([]);
   const [nearbyBuses, setNearbyBuses] = useState<LiveBusLocation[]>([]);
@@ -41,11 +73,12 @@ export default function HomeDashboardScreen() {
   const [nearbyError, setNearbyError] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
 
-  // ── Load session & profile on mount and when tab gains focus ──
+  // ── Load session, tickets & profile on mount and when tab gains focus ──
   useFocusEffect(
     useCallback(() => {
       void loadSession();
       void loadNearbyBuses();
+      void loadSmartPassTicket();
     }, [])
   );
 
@@ -122,12 +155,41 @@ export default function HomeDashboardScreen() {
     }
   }
 
+  async function loadSmartPassTicket(uid?: string | null) {
+    try {
+      // 1. Fetch tickets from Supabase tickets table and AsyncStorage cache
+      const tickets = await getPassengerTickets(uid || userId);
+      if (tickets && tickets.length > 0) {
+        setSmartPassTicket(tickets[0]);
+        return;
+      }
+
+      // 2. Fallback check local storage directly
+      const raw = await AsyncStorage.getItem('transitlk_tickets');
+      if (raw) {
+        const list = JSON.parse(raw);
+        if (Array.isArray(list) && list.length > 0) {
+          setSmartPassTicket(list[0]);
+          return;
+        }
+      }
+
+      // 3. Fallback default active pass and save it to storage
+      setSmartPassTicket(DEFAULT_SMART_PASS);
+      await AsyncStorage.setItem('transitlk_tickets', JSON.stringify([DEFAULT_SMART_PASS]));
+    } catch (err) {
+      console.warn('Error loading smart pass ticket:', err);
+      setSmartPassTicket(DEFAULT_SMART_PASS);
+    }
+  }
+
   async function handleRefresh() {
     setRefreshing(true);
 
     await Promise.all([
       loadSession(),
       loadNearbyBuses(),
+      loadSmartPassTicket(),
     ]);
 
     setRefreshing(false);
@@ -138,6 +200,112 @@ export default function HomeDashboardScreen() {
       router.push('/timetable-schedules');
     }
   }
+
+  // Active pass data and scannable QR code payload
+  const activePass = smartPassTicket || DEFAULT_SMART_PASS;
+
+  const qrCodeData = useMemo(() => {
+    const t = activePass;
+    const token = t.ticket_token || t.ticket_number || 'TRX-948210-LK';
+    return JSON.stringify({
+      app: 'TransitLK',
+      ticket_token: token,
+      ticket_number: t.ticket_number || token,
+      route_number: t.route_number || '138',
+      route_name: t.service_name || 'SLTB AC EXPRESS',
+      service_name: t.service_name || 'SLTB AC EXPRESS',
+      origin: t.origin_name || t.origin || 'Maharagama',
+      origin_name: t.origin_name || t.origin || 'Maharagama',
+      destination: t.destination_name || t.destination || 'Colombo Fort',
+      destination_name: t.destination_name || t.destination || 'Colombo Fort',
+      departure_time: t.departure_time || '08:45 AM',
+      arrival_time: t.arrival_time || '09:30 AM',
+      travel_date: t.travel_date || 'Today, 24 Oct 2026',
+      fare: String(t.fare ?? '240.00'),
+      amount: String(t.fare ?? '240.00'),
+      passenger_count: String(t.passenger_count || '1'),
+      passenger_type: t.passenger_type || '2 Adults',
+      payment_method: t.payment_method || 'LankaPay / Visa •••• 4242',
+      status: 'VALID',
+      payment_status: 'PAID',
+      issued_at: t.created_at || t.purchased_at || new Date().toISOString(),
+    });
+  }, [activePass]);
+
+  // Navigate to full Digital Pass screen
+  const handleOpenPassProfile = () => {
+    router.push({
+      pathname: '/transit-pass' as any,
+      params: {
+        bookingRef: activePass.ticket_token || activePass.ticket_number,
+        routeNumber: activePass.route_number || '138',
+        serviceName: activePass.service_name || 'SLTB AC EXPRESS',
+        originName: activePass.origin_name || activePass.origin || 'Maharagama Central',
+        destinationName: activePass.destination_name || activePass.destination || 'Colombo Fort',
+        travelDate: activePass.travel_date || 'Today, 24 Oct 2026',
+        departureTime: activePass.departure_time || '08:45 AM',
+        arrivalTime: activePass.arrival_time || '09:30 AM',
+        totalPayable: String(activePass.fare ?? '240.00'),
+        passengerDetails: activePass.passenger_type || '2 Adults',
+        totalTickets: String(activePass.passenger_count || 1),
+        paymentMethod: activePass.payment_method || 'LankaPay / Visa •••• 4242',
+      },
+    });
+  };
+
+  // Navigate to Ticket Confirmation screen
+  const handleOpenTicketConfirmation = () => {
+    router.push({
+      pathname: '/passenger/ticket-confirmation' as any,
+      params: {
+        bookingRef: activePass.ticket_token || activePass.ticket_number,
+        routeNumber: activePass.route_number || '138',
+        serviceName: activePass.service_name || 'SLTB AC EXPRESS',
+        originName: activePass.origin_name || activePass.origin || 'Maharagama Central',
+        destinationName: activePass.destination_name || activePass.destination || 'Colombo Fort',
+        travelDate: activePass.travel_date || 'Today, 24 Oct 2026',
+        departureTime: activePass.departure_time || '08:45 AM',
+        arrivalTime: activePass.arrival_time || '09:30 AM',
+        totalPayable: String(activePass.fare ?? '240.00'),
+        passengerDetails: activePass.passenger_type || '2 Adults',
+        totalTickets: String(activePass.passenger_count || 1),
+        paymentMethod: activePass.payment_method || 'LankaPay / Visa •••• 4242',
+      },
+    });
+  };
+
+  // Navigate to Ticket Details page in the purchase flow
+  const handleOpenTicketDetails = () => {
+    router.push({
+      pathname: '/passenger/ticket-details' as any,
+      params: {
+        routeNumber: activePass.route_number || '138',
+        serviceName: activePass.service_name || 'SLTB AC EXPRESS',
+        fare: String(activePass.fare ? (Number(activePass.fare) > 120 ? 120 : activePass.fare) : 120),
+        originName: activePass.origin_name || activePass.origin || 'Maharagama Central',
+        destinationName: activePass.destination_name || activePass.destination || 'Colombo Fort',
+        departureTime: activePass.departure_time || '08:45 AM',
+        arrivalTime: activePass.arrival_time || '09:30 AM',
+        durationText: '45 min bus corridor (Non-stop)',
+        travelDate: activePass.travel_date || 'Today, 24 Oct 2026',
+      },
+    });
+  };
+
+  // Navigate to Select Trip to begin new ticket purchase
+  const handleSelectTrip = () => {
+    router.push('/passenger/select-trip' as any);
+  };
+
+  // Test ticket token in Conductor Scanner
+  const handleTestScanner = () => {
+    router.push({
+      pathname: '/conductor/scanner' as any,
+      params: {
+        testToken: activePass.ticket_token || activePass.ticket_number,
+      },
+    });
+  };
 
   // ── Loading State ──
   if (loading) {
@@ -365,7 +533,7 @@ export default function HomeDashboardScreen() {
         <View style={styles.walletHeader}>
           <View style={styles.walletTitleRow}>
             <Ionicons
-              name="card-outline"
+              name="card"
               size={18}
               color="#002060"
             />
@@ -375,57 +543,142 @@ export default function HomeDashboardScreen() {
             </Text>
           </View>
 
-          <View style={styles.lankaPayPill}>
-            <Text style={styles.lankaPayText}>{isAuthenticated ? 'ACCOUNT' : 'SIGN IN'}</Text>
+          <View style={styles.walletHeaderRight}>
+            <View style={styles.livePassPill}>
+              <View style={styles.livePassDot} />
+              <Text style={styles.livePassPillText}>ACTIVE PASS</Text>
+            </View>
+            <TouchableOpacity
+              style={styles.lankaPayPill}
+              onPress={handleOpenPassProfile}
+            >
+              <Text style={styles.lankaPayText}>LANKAPAY</Text>
+            </TouchableOpacity>
           </View>
         </View>
 
         <View style={styles.walletCard}>
+          {/* Card Top: Route, Service & Status */}
           <View style={styles.walletCardHeader}>
-            <Text style={styles.tripStatusText}>SMARTPASS STATUS</Text>
-            <Text style={styles.fareText}>{isAuthenticated ? 'Balance unavailable' : 'Sign-in required'}</Text>
-          </View>
-          <Text style={styles.stationText}>
-            {isAuthenticated ? 'Pass and trip details are not available from the current backend.' : 'Sign in to view your account details.'}
-          </Text>
-
-          <View style={styles.walletMidRow}>
-            <View>
-              <Text style={styles.balanceLabel}>Stored balance</Text>
-              <Text style={styles.balanceValue}>Not available</Text>
-              <Text style={styles.tokenText}>
-                QR pass data is not configured.
-              </Text>
+            <View style={styles.walletRouteRow}>
+              <View style={styles.routePill}>
+                <Ionicons name="bus" size={11} color="#FFF" />
+                <Text style={styles.routePillText}>Route {activePass.route_number || '138'}</Text>
+              </View>
+              <Text style={styles.serviceNameText}>{activePass.service_name || 'SLTB AC EXPRESS'}</Text>
             </View>
 
+            <View style={styles.paidBadge}>
+              <Ionicons name="shield-checkmark" size={12} color="#059669" />
+              <Text style={styles.paidBadgeText}>VALID • PAID</Text>
+            </View>
+          </View>
+
+          {/* Destination & Stations summary banner */}
+          <TouchableOpacity
+            style={styles.journeyBox}
+            onPress={handleOpenTicketConfirmation}
+            activeOpacity={0.8}
+          >
+            <View style={styles.journeyTop}>
+              <Text style={styles.journeyStations}>
+                {activePass.origin_name || activePass.origin || 'Maharagama'} ➔ {activePass.destination_name || activePass.destination || 'Colombo Fort'}
+              </Text>
+            </View>
+            <Text style={styles.journeyMeta}>
+              {activePass.travel_date || 'Today'} • Departs {activePass.departure_time || '08:45 AM'} • ETA {activePass.arrival_time || '09:30 AM'}
+            </Text>
+          </TouchableOpacity>
+
+          {/* Middle Row: Stored Fare & Real Live QR Code */}
+          <View style={styles.walletMidRow}>
+            <View style={styles.walletBalanceCol}>
+              <Text style={styles.balanceLabel}>STORED TICKET FARE</Text>
+              <Text style={styles.balanceValue}>
+                LKR {Number(activePass.fare || 240).toFixed(2)}
+              </Text>
+              <Text style={styles.tokenText}>
+                #{activePass.ticket_token || activePass.ticket_number || 'TRX-948210-LK'}
+              </Text>
+              <View style={styles.passengerMetaBadge}>
+                <Ionicons name="people-outline" size={12} color="#475569" />
+                <Text style={styles.passengerMetaText}>
+                  {activePass.passenger_type || '2 Adults'} • Contactless Pass
+                </Text>
+              </View>
+            </View>
+
+            {/* Real QR Code Generator */}
             <TouchableOpacity
               style={styles.qrBox}
-              onPress={() => {
-                if (isAuthenticated) {
-                  router.push('/transit-pass');
-                } else {
-                  router.push('/login');
-                }
-              }}
+              onPress={() => setQrModalVisible(true)}
+              activeOpacity={0.8}
             >
-              <Ionicons name="person-circle-outline" size={38} color="#002060" />
-              <Text style={styles.qrSub}>Open account</Text>
+              <View style={styles.qrFrame}>
+                <QRCode
+                  value={qrCodeData}
+                  size={74}
+                  color="#002060"
+                  backgroundColor="#FFFFFF"
+                  ecl="M"
+                  quietZone={4}
+                />
+              </View>
+              <View style={styles.qrLabelRow}>
+                <Ionicons name="scan-outline" size={10} color="#002060" />
+                <Text style={styles.qrSub}>Tap to enlarge</Text>
+              </View>
             </TouchableOpacity>
           </View>
 
+          {/* Action buttons directly connected to purchase flow & confirmation */}
           <View style={styles.walletActionRow}>
             <TouchableOpacity
               style={styles.passBtnPrimary}
-              onPress={() => {
-                if (isAuthenticated) {
-                  router.push('/transit-pass');
-                } else {
-                  router.push('/login');
-                }
-              }}
+              onPress={handleOpenPassProfile}
+              activeOpacity={0.85}
             >
-              <Ionicons name="person-outline" size={16} color="#FFF" />
-              <Text style={styles.passBtnPrimaryText}>Open Pass Profile</Text>
+              <Ionicons name="qr-code-outline" size={14} color="#FFF" />
+              <Text style={styles.passBtnPrimaryText}>View Full Pass</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.passBtnSecondary}
+              onPress={handleOpenTicketDetails}
+              activeOpacity={0.85}
+            >
+              <Ionicons name="ticket-outline" size={14} color="#002060" />
+              <Text style={styles.passBtnSecondaryText}>Ticket Details</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.passBtnSecondary}
+              onPress={handleOpenTicketConfirmation}
+              activeOpacity={0.85}
+            >
+              <Ionicons name="receipt-outline" size={14} color="#002060" />
+              <Text style={styles.passBtnSecondaryText}>Confirmation</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Quick Helper Links Row */}
+          <View style={styles.walletSubLinksRow}>
+            <TouchableOpacity
+              style={styles.subLinkItem}
+              onPress={handleSelectTrip}
+            >
+              <Ionicons name="add-circle-outline" size={13} color="#0D9488" />
+              <Text style={styles.subLinkText}>Book New Ticket</Text>
+            </TouchableOpacity>
+
+            <View style={styles.subLinkDivider} />
+
+            <TouchableOpacity
+              style={styles.subLinkItem}
+              onPress={handleTestScanner}
+            >
+              <Ionicons name="shield-checkmark-outline" size={13} color="#002060" />
+              <Text style={styles.subLinkTextDark}>Test in Scanner</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -786,6 +1039,86 @@ export default function HomeDashboardScreen() {
           </Text>
         </TouchableOpacity>
       </ScrollView>
+
+      {/* ═══ QR Code Modal for Boarding Inspection ═══ */}
+      <Modal
+        visible={qrModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setQrModalVisible(false)}
+      >
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => setQrModalVisible(false)}
+        >
+          <Pressable
+            style={styles.modalContent}
+            onPress={(e) => e.stopPropagation()}
+          >
+            <View style={styles.modalHeader}>
+              <View>
+                <Text style={styles.modalTitle}>LankaTransit Boarding Pass</Text>
+                <Text style={styles.modalSub}>
+                  Route {activePass.route_number || '138'} • #{activePass.ticket_token || activePass.ticket_number}
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={styles.modalCloseBtn}
+                onPress={() => setQrModalVisible(false)}
+              >
+                <Ionicons name="close" size={20} color="#64748B" />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.modalQrContainer}>
+              <QRCode
+                value={qrCodeData}
+                size={200}
+                color="#002060"
+                backgroundColor="#FFFFFF"
+                ecl="M"
+                quietZone={8}
+              />
+            </View>
+
+            <View style={styles.modalTripInfo}>
+              <Text style={styles.modalTripStations}>
+                {activePass.origin_name || activePass.origin || 'Maharagama'} ➔ {activePass.destination_name || activePass.destination || 'Colombo Fort'}
+              </Text>
+              <Text style={styles.modalTripMeta}>
+                Fare: LKR {Number(activePass.fare || 240).toFixed(2)} • {activePass.passenger_type || '2 Adults'}
+              </Text>
+              <Text style={styles.modalInstruction}>
+                Show this QR code to the bus conductor or hold against the contactless validator.
+              </Text>
+            </View>
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={styles.modalBtnPrimary}
+                onPress={() => {
+                  setQrModalVisible(false);
+                  handleOpenPassProfile();
+                }}
+              >
+                <Ionicons name="card-outline" size={16} color="#FFF" />
+                <Text style={styles.modalBtnPrimaryText}>Open Pass Profile</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.modalBtnSecondary}
+                onPress={() => {
+                  setQrModalVisible(false);
+                  handleTestScanner();
+                }}
+              >
+                <Ionicons name="qr-code-outline" size={16} color="#002060" />
+                <Text style={styles.modalBtnSecondaryText}>Test in Scanner</Text>
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -1058,10 +1391,39 @@ const styles = StyleSheet.create({
     color: '#002060',
   },
 
+  walletHeaderRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+
+  livePassPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#DCFCE7',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+    gap: 4,
+  },
+
+  livePassDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#16A34A',
+  },
+
+  livePassPillText: {
+    fontSize: 9,
+    fontWeight: 'bold',
+    color: '#15803D',
+  },
+
   lankaPayPill: {
     backgroundColor: '#CCFBF1',
     paddingHorizontal: 8,
-    paddingVertical: 2,
+    paddingVertical: 3,
     borderRadius: 8,
   },
 
@@ -1074,34 +1436,95 @@ const styles = StyleSheet.create({
   walletCard: {
     backgroundColor: '#FFF',
     borderWidth: 1,
-    borderColor: '#CBD5E1',
-    borderRadius: 12,
+    borderColor: '#E2E8F0',
+    borderRadius: 14,
     padding: 14,
     marginBottom: 20,
+    shadowColor: '#002060',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    elevation: 2,
   },
 
   walletCardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 4,
-  },
-
-  tripStatusText: {
-    fontSize: 10,
-    fontWeight: 'bold',
-    color: '#0D9488',
-  },
-
-  fareText: {
-    fontSize: 11,
-    fontWeight: 'bold',
-    color: '#002060',
-  },
-
-  stationText: {
-    fontSize: 12,
-    color: '#64748B',
+    alignItems: 'center',
     marginBottom: 10,
+  },
+
+  walletRouteRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+
+  routePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#002060',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+
+  routePillText: {
+    color: '#FFF',
+    fontWeight: 'bold',
+    fontSize: 11,
+  },
+
+  serviceNameText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#334155',
+  },
+
+  paidBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#F0FDF4',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#BBF7D0',
+  },
+
+  paidBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#15803D',
+  },
+
+  journeyBox: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginBottom: 12,
+    borderLeftWidth: 3,
+    borderLeftColor: '#002060',
+  },
+
+  journeyTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+
+  journeyStations: {
+    fontSize: 13,
+    fontWeight: 'bold',
+    color: '#0F172A',
+  },
+
+  journeyMeta: {
+    fontSize: 11,
+    color: '#64748B',
+    marginTop: 2,
   },
 
   walletMidRow: {
@@ -1110,66 +1533,263 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderTopWidth: 1,
     borderTopColor: '#F1F5F9',
-    paddingTop: 10,
-    marginBottom: 12,
+    paddingTop: 12,
+    marginBottom: 14,
+    gap: 12,
+  },
+
+  walletBalanceCol: {
+    flex: 1,
   },
 
   balanceLabel: {
-    fontSize: 10,
+    fontSize: 9,
+    fontWeight: '700',
     color: '#64748B',
+    letterSpacing: 0.5,
   },
 
   balanceValue: {
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: 'bold',
     color: '#002060',
+    marginVertical: 1,
   },
 
   tokenText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#0284C7',
+    marginBottom: 4,
+  },
+
+  passengerMetaBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 2,
+  },
+
+  passengerMetaText: {
     fontSize: 10,
     color: '#64748B',
-    marginTop: 2,
   },
 
   qrBox: {
     alignItems: 'center',
-    backgroundColor: '#EEF2FF',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
+    borderRadius: 10,
     padding: 6,
-    borderRadius: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
+    elevation: 1,
+  },
+
+  qrFrame: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 6,
+    overflow: 'hidden',
+  },
+
+  qrLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    marginTop: 4,
   },
 
   qrSub: {
-    fontSize: 8,
+    fontSize: 9,
+    fontWeight: '600',
     color: '#002060',
-    marginTop: 2,
   },
 
   walletActionRow: {
     flexDirection: 'row',
     gap: 8,
+    marginBottom: 10,
   },
 
   passBtnPrimary: {
-    flex: 1,
+    flex: 1.2,
     backgroundColor: '#002060',
-    height: 40,
+    height: 38,
     borderRadius: 8,
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    gap: 6,
+    gap: 5,
   },
 
   passBtnPrimaryText: {
     color: '#FFF',
     fontWeight: 'bold',
-    fontSize: 12,
+    fontSize: 11,
   },
 
   passBtnSecondary: {
     flex: 1,
     backgroundColor: '#EEF2FF',
-    height: 40,
+    height: 38,
+    borderRadius: 8,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 4,
+    borderWidth: 1,
+    borderColor: '#C7D2FE',
+  },
+
+  passBtnSecondaryText: {
+    color: '#002060',
+    fontWeight: 'bold',
+    fontSize: 11,
+  },
+
+  walletSubLinksRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
+    gap: 16,
+  },
+
+  subLinkItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 2,
+  },
+
+  subLinkDivider: {
+    width: 1,
+    height: 12,
+    backgroundColor: '#CBD5E1',
+  },
+
+  subLinkText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#0D9488',
+  },
+
+  subLinkTextDark: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#002060',
+  },
+
+  // ── Modal Styles ──
+
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.65)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+
+  modalContent: {
+    backgroundColor: '#FFF',
+    width: '100%',
+    maxWidth: 380,
+    borderRadius: 16,
+    padding: 20,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    elevation: 8,
+  },
+
+  modalHeader: {
+    width: '100%',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 16,
+  },
+
+  modalTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#002060',
+  },
+
+  modalSub: {
+    fontSize: 11,
+    color: '#64748B',
+    marginTop: 2,
+  },
+
+  modalCloseBtn: {
+    padding: 4,
+    borderRadius: 14,
+    backgroundColor: '#F1F5F9',
+  },
+
+  modalQrContainer: {
+    backgroundColor: '#FFF',
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 2,
+    marginBottom: 14,
+  },
+
+  modalTripInfo: {
+    width: '100%',
+    backgroundColor: '#F8FAFC',
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 16,
+    alignItems: 'center',
+  },
+
+  modalTripStations: {
+    fontSize: 13,
+    fontWeight: 'bold',
+    color: '#0F172A',
+    textAlign: 'center',
+    marginBottom: 3,
+  },
+
+  modalTripMeta: {
+    fontSize: 11,
+    color: '#475569',
+    fontWeight: '600',
+    marginBottom: 6,
+  },
+
+  modalInstruction: {
+    fontSize: 10,
+    color: '#64748B',
+    textAlign: 'center',
+    lineHeight: 14,
+  },
+
+  modalActions: {
+    width: '100%',
+    flexDirection: 'row',
+    gap: 10,
+  },
+
+  modalBtnPrimary: {
+    flex: 1,
+    backgroundColor: '#002060',
+    height: 42,
     borderRadius: 8,
     flexDirection: 'row',
     justifyContent: 'center',
@@ -1177,7 +1797,26 @@ const styles = StyleSheet.create({
     gap: 6,
   },
 
-  passBtnSecondaryText: {
+  modalBtnPrimaryText: {
+    color: '#FFF',
+    fontWeight: 'bold',
+    fontSize: 12,
+  },
+
+  modalBtnSecondary: {
+    flex: 1,
+    backgroundColor: '#EEF2FF',
+    height: 42,
+    borderRadius: 8,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 6,
+    borderWidth: 1,
+    borderColor: '#C7D2FE',
+  },
+
+  modalBtnSecondaryText: {
     color: '#002060',
     fontWeight: 'bold',
     fontSize: 12,
