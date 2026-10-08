@@ -35,11 +35,65 @@ const safeStorage = {
   },
 };
 
+// Ensure WebSocket is available for Node.js / SSR (Node < 22 running Expo Router web SSR)
+class DummyWebSocket {
+  static readonly CONNECTING = 0;
+  static readonly OPEN = 1;
+  static readonly CLOSING = 2;
+  static readonly CLOSED = 3;
+  readonly CONNECTING = 0;
+  readonly OPEN = 1;
+  readonly CLOSING = 2;
+  readonly CLOSED = 3;
+  readyState = 3;
+  url = '';
+  protocol = '';
+  onopen = null;
+  onclose = null;
+  onerror = null;
+  onmessage = null;
+  close() {}
+  send() {}
+  addEventListener() {}
+  removeEventListener() {}
+  dispatchEvent() {
+    return false;
+  }
+}
+
+const resolveWebSocket = () => {
+  if (typeof WebSocket !== 'undefined') {
+    return WebSocket;
+  }
+  if (typeof globalThis !== 'undefined' && (globalThis as any).WebSocket) {
+    return (globalThis as any).WebSocket;
+  }
+  try {
+    // In Node.js environment, ws package is available
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    return require('ws');
+  } catch {
+    return DummyWebSocket;
+  }
+};
+
+const CustomWebSocket = resolveWebSocket();
+if (typeof WebSocket === 'undefined') {
+  try {
+    (globalThis as any).WebSocket = CustomWebSocket;
+  } catch {
+    // Ignore if globalThis is sealed
+  }
+}
+
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     storage: safeStorage,
     autoRefreshToken: typeof window !== 'undefined',
     persistSession: typeof window !== 'undefined',
     detectSessionInUrl: false,
+  },
+  realtime: {
+    transport: CustomWebSocket,
   },
 });
