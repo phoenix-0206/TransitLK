@@ -1,199 +1,290 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Pressable } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import { router, useLocalSearchParams } from 'expo-router';
+import React, {
+  useEffect,
+  useState,
+} from 'react';
+
+import {
+  Pressable,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
+
+import {
+  Ionicons,
+  MaterialCommunityIcons,
+} from '@expo/vector-icons';
+
+import {
+  router,
+  useLocalSearchParams,
+} from 'expo-router';
+
+import {
+  SafeAreaView,
+} from 'react-native-safe-area-context';
+
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import QRCode from 'react-native-qrcode-svg';
-
-function TransitTicketQRCode({ value, bookingRef }: { value: string; bookingRef: string }) {
-  return (
-    <View style={styles.qrWrapper}>
-      <View style={styles.qrCodeContainer}>
-        <QRCode
-          value={value}
-          size={205}
-          color="#002060"
-          backgroundColor="#FFFFFF"
-          ecl="M"
-          quietZone={10}
-        />
-      </View>
-
-      <Text style={styles.qrCodeText}>
-        #{bookingRef} • Scan to validate ticket
-      </Text>
-    </View>
-  );
-}
-
-// Keeps the passenger route navigation from producing
-// Expo Router typed-route warnings in this file.
-function goToPassengerRoute(path: string) {
-  router.push(path as any);
-}
 
 export default function TransitPassScreen() {
   const params = useLocalSearchParams<{
     bookingRef?: string;
+    ticketToken?: string;
+    ticketId?: string;
+
     routeNumber?: string;
     serviceName?: string;
+
     originName?: string;
     destinationName?: string;
+
     travelDate?: string;
     departureTime?: string;
     arrivalTime?: string;
+
     totalPayable?: string;
     passengerDetails?: string;
     totalTickets?: string;
+
     paymentMethod?: string;
   }>();
 
-  const [storedTicket, setStoredTicket] = useState<any>(null);
+  /*
+   * Used when Transit Pass is opened later,
+   * without navigation params.
+   */
+  const [storedTicket, setStoredTicket] =
+    useState<any>(null);
+
+  const [loading, setLoading] =
+    useState(true);
 
   useEffect(() => {
-    async function loadLatestTicket() {
+    const loadLatestTicket = async () => {
       try {
-        const storedRaw = await AsyncStorage.getItem('transitlk_tickets');
-        if (storedRaw) {
-          const list = JSON.parse(storedRaw);
-          if (Array.isArray(list) && list.length > 0) {
-            setStoredTicket(list[0]);
-          }
+        const raw =
+          await AsyncStorage.getItem(
+            'transitlk_tickets',
+          );
+
+        if (!raw) {
+          return;
         }
-      } catch (e) {
-        console.warn('Failed to load stored ticket:', e);
+
+        const tickets =
+          JSON.parse(raw);
+
+        if (
+          Array.isArray(tickets) &&
+          tickets.length > 0
+        ) {
+          /*
+           * If a ticketToken was passed,
+           * find that exact ticket.
+           *
+           * Otherwise use latest ticket.
+           */
+          if (params.ticketToken) {
+            const selected =
+              tickets.find(
+                (item: any) =>
+                  item.ticket_token ===
+                  params.ticketToken,
+              );
+
+            if (selected) {
+              setStoredTicket(selected);
+              return;
+            }
+          }
+
+          setStoredTicket(tickets[0]);
+        }
+      } catch (error) {
+        console.warn(
+          'Failed to load TransitLK ticket:',
+          error,
+        );
+      } finally {
+        setLoading(false);
       }
-    }
+    };
+
     void loadLatestTicket();
-  }, []);
+  }, [params.ticketToken]);
 
-  // Priority: 1. URL Route params from confirmation, 2. Stored ticket from AsyncStorage, 3. Defaults
-  const bookingRef = params.bookingRef || storedTicket?.ticket_token || storedTicket?.bookingRef || 'TRX-708679-LK';
-  const routeNumber = params.routeNumber || storedTicket?.route_number || '138';
-  const serviceName = params.serviceName || storedTicket?.service_name || storedTicket?.route_name || 'SLTB Semi-Luxury';
-  const originName = params.originName || storedTicket?.origin_name || storedTicket?.origin || 'Colombo Fort';
-  const destinationName = params.destinationName || storedTicket?.destination_name || storedTicket?.destination || 'Maharagama';
-  const travelDate = params.travelDate || storedTicket?.travel_date || 'Today, 24 Oct 2026';
-  const departureTime = params.departureTime || storedTicket?.departure_time || '14:30';
-  const arrivalTime = params.arrivalTime || storedTicket?.arrival_time || '15:18';
-  const totalPayable = params.totalPayable || storedTicket?.fare || storedTicket?.amount || '185.00';
-  const passengerDetails = params.passengerDetails || storedTicket?.passenger_type || '2 Adult, 1 Student Concession';
-  const totalTickets = params.totalTickets || storedTicket?.passenger_count || '3';
-  const paymentMethod = params.paymentMethod || storedTicket?.payment_method || 'LankaPay / Visa •••• 4242';
+  /*
+   * Priority:
+   *
+   * 1. Real values passed after payment
+   * 2. Locally stored latest ticket
+   * 3. Fallback demo values
+   */
+  const bookingRef =
+    params.bookingRef ||
+    storedTicket?.ticket_number ||
+    'TRX-TEST-LK';
 
-  // Construct the exact identical QR payload generated on ticket-confirmation.tsx
-  const qrCodeData = useMemo(() => {
-    return JSON.stringify({
-      app: 'TransitLK',
-      ticket_token: bookingRef,
-      ticket_number: bookingRef,
-      route_number: routeNumber,
-      route_name: serviceName,
-      service_name: serviceName,
-      origin: originName,
-      origin_name: originName,
-      destination: destinationName,
-      destination_name: destinationName,
-      departure_time: departureTime,
-      arrival_time: arrivalTime,
-      travel_date: travelDate,
-      fare: totalPayable,
-      amount: totalPayable,
-      passenger_count: totalTickets,
-      passenger_type: passengerDetails,
-      payment_method: paymentMethod,
-      status: 'VALID',
-      payment_status: 'PAID',
-      issued_at: storedTicket?.created_at || new Date().toISOString(),
+  /*
+   * MOST IMPORTANT FIELD.
+   *
+   * This must be the SAME value stored in:
+   *
+   * Supabase:
+   * tickets.ticket_token
+   */
+  const ticketToken =
+    params.ticketToken ||
+    storedTicket?.ticket_token ||
+    bookingRef;
+
+  const ticketId =
+    params.ticketId ||
+    storedTicket?.id ||
+    '';
+
+  const routeNumber =
+    params.routeNumber ||
+    storedTicket?.route_number ||
+    '138';
+
+  const serviceName =
+    params.serviceName ||
+    storedTicket?.service_name ||
+    storedTicket?.route_name ||
+    'SLTB';
+
+  const originName =
+    params.originName ||
+    storedTicket?.origin_name ||
+    storedTicket?.origin ||
+    'Maharagama';
+
+  const destinationName =
+    params.destinationName ||
+    storedTicket?.destination_name ||
+    storedTicket?.destination ||
+    'Colombo Fort';
+
+  const travelDate =
+    params.travelDate ||
+    storedTicket?.travel_date ||
+    'Today';
+
+  const departureTime =
+    params.departureTime ||
+    storedTicket?.departure_time ||
+    '--:--';
+
+  const arrivalTime =
+    params.arrivalTime ||
+    storedTicket?.arrival_time ||
+    '--:--';
+
+  const totalPayable =
+    params.totalPayable ||
+    storedTicket?.fare ||
+    storedTicket?.amount ||
+    '0.00';
+
+  const passengerDetails =
+    params.passengerDetails ||
+    storedTicket?.passenger_type ||
+    'Passenger';
+
+  const totalTickets =
+    params.totalTickets ||
+    storedTicket?.passenger_count ||
+    '1';
+
+  const paymentMethod =
+    params.paymentMethod ||
+    storedTicket?.payment_method ||
+    'Online Payment';
+
+  const openConductorScanner = () => {
+    router.push({
+      pathname:
+        '/conductor/scanner' as any,
+
+      params: {
+        /*
+         * Same real database token.
+         */
+        testToken: ticketToken,
+      },
     });
-  }, [
-    bookingRef,
-    routeNumber,
-    serviceName,
-    originName,
-    destinationName,
-    departureTime,
-    arrivalTime,
-    travelDate,
-    totalPayable,
-    totalTickets,
-    passengerDetails,
-    paymentMethod,
-    storedTicket,
-  ]);
+  };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.container}
-      >
+    <SafeAreaView
+      style={styles.safeArea}
+      edges={['top']}
+    >
+      <StatusBar
+        barStyle="dark-content"
+        backgroundColor="#F8FAFC"
+      />
 
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+      >
         {/* Header */}
 
         <View style={styles.header}>
-          <View style={styles.brandContainer}>
-            <View style={styles.logoBox}>
-              <Ionicons name="bus" size={22} color="#FFF" />
+          <View style={styles.brandRow}>
+            <View style={styles.logo}>
+              <Ionicons
+                name="bus"
+                size={22}
+                color="#FFFFFF"
+              />
             </View>
 
             <View>
-              <Text style={styles.brandName}>
+              <Text style={styles.brand}>
                 TransitLK
               </Text>
 
-              <Text style={styles.brandSubtitle}>
-                TRANSIT PASS
+              <Text style={styles.brandSub}>
+                PAY & PASS
               </Text>
             </View>
           </View>
 
-          <View style={styles.headerActions}>
-            <View style={styles.livePill}>
-              <View style={styles.liveDot} />
+          <View style={styles.liveBadge}>
+            <View style={styles.liveDot} />
 
-              <Text style={styles.liveText}>
-                Live GPS
-              </Text>
-            </View>
-
-            <View style={styles.languageButton}>
-              <Text style={styles.languageText}>
-                EN
-              </Text>
-            </View>
-
-            <TouchableOpacity
-              style={styles.profileButton}
-              onPress={() => router.push('/profile')}
-            >
-              <Ionicons
-                name="person-outline"
-                size={18}
-                color="#FFF"
-              />
-            </TouchableOpacity>
+            <Text style={styles.liveText}>
+              Active
+            </Text>
           </View>
         </View>
 
-        {/* Page title */}
+        {/* Title */}
 
         <View style={styles.titleRow}>
-          <View style={styles.titleLeft}>
-            <Text style={styles.pageTitle}>
-              TransitLK Pay & Pass
+          <View>
+            <Text style={styles.title}>
+              My Transit Pass
             </Text>
 
-            <View style={styles.lkBadge}>
-              <Text style={styles.lkText}>
-                LK
-              </Text>
-            </View>
+            <Text style={styles.subtitle}>
+              Digital ticket for your current journey
+            </Text>
           </View>
 
-          <View style={styles.nfcReady}>
-            <View style={styles.nfcDot} />
+          <View style={styles.nfcBadge}>
+            <Ionicons
+              name="wifi-outline"
+              size={15}
+              color="#007F78"
+            />
 
             <Text style={styles.nfcText}>
               NFC Ready
@@ -201,516 +292,363 @@ export default function TransitPassScreen() {
           </View>
         </View>
 
-        {/* Main Transit Pass Card */}
+        {/* Main Transit Card */}
 
-        <View style={styles.passCard}>
-          <View style={styles.passTopRow}>
-            <View style={styles.passBrandRow}>
-              <View style={styles.contactlessIcon}>
-                <Ionicons
-                  name="wifi"
-                  size={20}
-                  color="#FFF"
-                />
-              </View>
-
-              <View>
-                <Text style={styles.passBrand}>
-                  TRANSPASS LK
-                </Text>
-
-                <Text style={styles.passDescription}>
-                  Interoperable Transit Card
-                </Text>
-              </View>
-            </View>
-
-            <View style={styles.lankaPayBadge}>
-              <Text style={styles.lankaPayText}>
-                ◉ LANKAPAY
-              </Text>
-            </View>
-          </View>
-
-          <Text style={styles.balanceLabel}>
-            STORED TRANSIT BALANCE
-          </Text>
-
-          <Text style={styles.balanceValue}>
-            <Text style={styles.balanceCurrency}>
-              LKR
-            </Text>{' '}
-            1,450.00
-          </Text>
-
-          <View style={styles.autoReloadPill}>
-            <View style={styles.autoReloadDot} />
-
-            <Text style={styles.autoReloadText}>
-              Auto-Reload ON
-            </Text>
-          </View>
-
-          <Text style={styles.autoReloadAmount}>
-            &lt; LKR 300
-          </Text>
-
-          <View style={styles.passBottomRow}>
+        <View style={styles.transitCard}>
+          <View style={styles.transitTopRow}>
             <View>
-              <Text style={styles.cardLabel}>
-                CARDHOLDER
+              <Text style={styles.transitLabel}>
+                TRANSITLK DIGITAL PASS
               </Text>
 
-              <Text style={styles.cardValue}>
-                Kasun Jayasundara
-              </Text>
-            </View>
-
-            <View style={styles.commuterIdContainer}>
-              <Text style={styles.cardLabel}>
-                COMMUTER ID
-              </Text>
-
-              <Text style={styles.commuterId}>
-                TLK-8824-COL
-              </Text>
-            </View>
-          </View>
-        </View>
-
-        {/* Pass Actions */}
-
-        <View style={styles.actionRow}>
-          <TouchableOpacity style={styles.actionCard}>
-            <Ionicons
-              name="card-outline"
-              size={22}
-              color="#007F78"
-            />
-
-            <Text style={styles.actionTitle}>
-              Top Up
-            </Text>
-
-            <Text style={styles.actionSub}>
-              LankaQR
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.actionCard}>
-            <Ionicons
-              name="sync-outline"
-              size={22}
-              color="#002060"
-            />
-
-            <Text style={styles.actionTitle}>
-              Auto-Debit
-            </Text>
-
-            <Text style={styles.actionSub}>
-              Active
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.actionCard}>
-            <Ionicons
-              name="receipt-outline"
-              size={22}
-              color="#002060"
-            />
-
-            <Text style={styles.actionTitle}>
-              Receipts
-            </Text>
-
-            <Text style={styles.actionSub}>
-              Tax / NTC
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* QR / NFC Selector */}
-
-        <View style={styles.modeSelector}>
-          <TouchableOpacity style={styles.qrModeActive}>
-            <Ionicons
-              name="qr-code-outline"
-              size={18}
-              color="#007F78"
-            />
-
-            <Text style={styles.qrModeText}>
-              Dynamic QR Code
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.nfcMode}>
-            <Ionicons
-              name="wifi-outline"
-              size={18}
-              color="#64748B"
-            />
-
-            <Text style={styles.nfcModeText}>
-              NFC Contactless
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Live Security Token */}
-
-        <View style={styles.securityCard}>
-          <View style={styles.securityHeader}>
-            <View style={styles.securityTitleRow}>
-              <View style={styles.securityDot} />
-
-              <Text style={styles.securityTitle}>
-                Live Security Token
+              <Text style={styles.transitId}>
+                {bookingRef}
               </Text>
             </View>
 
-            <View style={styles.refreshPill}>
-              <Ionicons
-                name="timer-outline"
-                size={14}
-                color="#64748B"
-              />
-
-              <Text style={styles.refreshText}>
-                Refresh in 40s
-              </Text>
-            </View>
-          </View>
-
-          {/* REAL SCANNABLE QR */}
-
-          <TransitTicketQRCode value={qrCodeData} bookingRef={bookingRef} />
-
-          <View style={styles.offlineBox}>
-            <Ionicons
-              name="checkmark-circle-outline"
-              size={20}
-              color="#00897B"
-            />
-
-            <View style={styles.offlineTextContainer}>
-              <Text style={styles.offlineTitle}>
-                Zero-Data Offline Verified
-              </Text>
-
-              <Text style={styles.offlineDescription}>
-                Valid on bus conductor POS and rail barrier gates
-                without internet.
-              </Text>
-            </View>
-          </View>
-
-          <TouchableOpacity
-            style={styles.conductorTestButton}
-            onPress={() => {
-              router.push({
-                pathname: '/conductor/scanner' as any,
-                params: {
-                  testToken: bookingRef,
-                },
-              });
-            }}
-          >
             <MaterialCommunityIcons
-              name="qrcode-scan"
-              size={17}
-              color="#002060"
+              name="contactless-payment"
+              size={34}
+              color="#FFFFFF"
             />
-            <Text style={styles.conductorTestButtonText}>
-              Test in Conductor Scanner
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.brightnessButton}>
-            <Ionicons
-              name="sunny-outline"
-              size={20}
-              color="#002060"
-            />
-
-            <Text style={styles.brightnessText}>
-              Maximize Brightness for Scanner
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Current Journey Ticket */}
-
-        <TouchableOpacity
-          style={styles.currentTicketCard}
-          activeOpacity={0.85}
-          onPress={() =>
-            goToPassengerRoute('/search')
-          }
-        >
-          <View style={styles.ticketHeader}>
-            <View style={styles.ticketHeaderLeft}>
-              <Ionicons
-                name="bus-outline"
-                size={16}
-                color="#FFF"
-              />
-
-              <Text style={styles.ticketHeaderText}>
-                CURRENT JOURNEY TICKET
-              </Text>
-            </View>
-
-            <View style={styles.inTransitBadge}>
-              <Text style={styles.inTransitText}>
-                Active Pass
-              </Text>
-            </View>
           </View>
 
-          <View style={styles.ticketBody}>
-            <View style={styles.routeNumber}>
-              <Text style={styles.routeNumberText}>
+          <Text style={styles.routeLabel}>
+            CURRENT ROUTE
+          </Text>
+
+          <View style={styles.routeRow}>
+            <View style={styles.routeNumberBadge}>
+              <Text style={styles.routeNumber}>
                 {routeNumber}
               </Text>
             </View>
 
-            <View style={styles.routeInfo}>
-              <Text style={styles.routeName}>
-                {originName} ⇄ {destinationName}
+            <View style={styles.routeTextContainer}>
+              <Text style={styles.routeText}>
+                {originName} → {destinationName}
               </Text>
 
-              <Text style={styles.routeType}>
+              <Text style={styles.serviceText}>
                 {serviceName}
-              </Text>
-            </View>
-
-            <View style={styles.fareContainer}>
-              <Text style={styles.fare}>
-                LKR {totalPayable}
-              </Text>
-
-              <Text style={styles.fareType}>
-                {passengerDetails}
               </Text>
             </View>
           </View>
 
-          <View style={styles.journeyProgress}>
-            <View style={styles.progressRow}>
-              <View style={styles.progressIcon}>
+          <View style={styles.transitBottomRow}>
+            <View>
+              <Text style={styles.smallLabel}>
+                PASSENGERS
+              </Text>
+
+              <Text style={styles.smallValue}>
+                {passengerDetails}
+              </Text>
+            </View>
+
+            <View style={styles.alignRight}>
+              <Text style={styles.smallLabel}>
+                FARE
+              </Text>
+
+              <Text style={styles.fare}>
+                LKR {totalPayable}
+              </Text>
+            </View>
+          </View>
+        </View>
+
+        {/* QR Section */}
+
+        <View style={styles.qrCard}>
+          <View style={styles.qrHeader}>
+            <View>
+              <Text style={styles.qrTitle}>
+                Ticket QR Code
+              </Text>
+
+              <Text style={styles.qrSubtitle}>
+                Show this to the conductor
+              </Text>
+            </View>
+
+            <View style={styles.verifiedBadge}>
+              <Ionicons
+                name="checkmark-circle"
+                size={15}
+                color="#047857"
+              />
+
+              <Text style={styles.verifiedText}>
+                PAID
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.qrWrapper}>
+            {/*
+             * CRITICAL:
+             *
+             * QR VALUE IS THE REAL
+             * tickets.ticket_token VALUE.
+             *
+             * Example:
+             * TLK-2026-5678-B
+             */}
+
+            <QRCode
+              value={ticketToken}
+              size={210}
+              color="#002060"
+              backgroundColor="#FFFFFF"
+              ecl="M"
+              quietZone={10}
+            />
+          </View>
+
+          <Text style={styles.tokenLabel}>
+            TICKET TOKEN
+          </Text>
+
+          <Text style={styles.tokenValue}>
+            {ticketToken}
+          </Text>
+
+          <View style={styles.offlineBox}>
+            <Ionicons
+              name="shield-checkmark-outline"
+              size={20}
+              color="#007F78"
+            />
+
+            <View style={styles.offlineTextContainer}>
+              <Text style={styles.offlineTitle}>
+                Ready for validation
+              </Text>
+
+              <Text style={styles.offlineText}>
+                Scan this QR using the conductor
+                application.
+              </Text>
+            </View>
+          </View>
+
+          <Pressable
+            style={styles.scanTestButton}
+            onPress={openConductorScanner}
+          >
+            <MaterialCommunityIcons
+              name="qrcode-scan"
+              size={19}
+              color="#FFFFFF"
+            />
+
+            <Text style={styles.scanTestText}>
+              Test in Conductor Scanner
+            </Text>
+          </Pressable>
+        </View>
+
+        {/* Current Journey */}
+
+        <Pressable
+          style={styles.journeyCard}
+          onPress={() =>
+            router.push({
+              pathname: '/passenger/search' as any,
+              params: {
+                busNumber: routeNumber,
+              },
+            })
+          }
+        >
+          <View style={styles.journeyHeader}>
+            <View style={styles.journeyHeaderLeft}>
+              <Ionicons
+                name="bus-outline"
+                size={18}
+                color="#FFFFFF"
+              />
+
+              <Text style={styles.journeyHeaderText}>
+                CURRENT JOURNEY
+              </Text>
+            </View>
+
+            <View style={styles.activeBadge}>
+              <Text style={styles.activeBadgeText}>
+                ACTIVE
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.journeyBody}>
+            <View style={styles.stationRow}>
+              <View style={styles.stationIconStart}>
                 <Ionicons
                   name="enter-outline"
-                  size={15}
+                  size={17}
                   color="#007F78"
                 />
               </View>
 
-              <Text style={styles.progressText}>
-                BOARDING: {originName}
-              </Text>
+              <View style={styles.stationDetails}>
+                <Text style={styles.stationLabel}>
+                  BOARDING
+                </Text>
 
-              <Text style={styles.progressTime}>
+                <Text style={styles.stationName}>
+                  {originName}
+                </Text>
+              </View>
+
+              <Text style={styles.stationTime}>
                 {departureTime}
               </Text>
             </View>
 
-            <View style={styles.progressLineContainer}>
-              <View style={styles.progressLine} />
+            <View style={styles.timeline}>
+              <View style={styles.timelineLine} />
             </View>
 
-            <View style={styles.progressRow}>
-              <View style={styles.progressIconEnd}>
+            <View style={styles.stationRow}>
+              <View style={styles.stationIconEnd}>
                 <Ionicons
                   name="exit-outline"
-                  size={15}
+                  size={17}
                   color="#64748B"
                 />
               </View>
 
-              <Text style={styles.progressTextEnd}>
-                DESTINATION: {destinationName}
-              </Text>
+              <View style={styles.stationDetails}>
+                <Text style={styles.stationLabel}>
+                  DESTINATION
+                </Text>
 
-              <Text style={styles.etaText}>
+                <Text style={styles.stationName}>
+                  {destinationName}
+                </Text>
+              </View>
+
+              <Text style={styles.stationTime}>
                 {arrivalTime}
               </Text>
             </View>
           </View>
 
-          <View style={styles.passcodeBox}>
-            <Ionicons
-              name="qr-code-outline"
-              size={16}
-              color="#002060"
-            />
+          <View style={styles.journeyFooter}>
+            <View>
+              <Text style={styles.footerLabel}>
+                DATE
+              </Text>
 
-            <Text style={styles.passcodeText}>
-              Booking Ref:
+              <Text style={styles.footerValue}>
+                {travelDate}
+              </Text>
+            </View>
+
+            <View style={styles.alignRight}>
+              <Text style={styles.footerLabel}>
+                PAYMENT
+              </Text>
+
+              <Text style={styles.footerValue}>
+                {paymentMethod}
+              </Text>
+            </View>
+          </View>
+        </Pressable>
+
+        {/* Ticket information */}
+
+        <View style={styles.detailsCard}>
+          <Text style={styles.detailsTitle}>
+            Ticket Information
+          </Text>
+
+          <View style={styles.detailRow}>
+            <Text style={styles.detailLabel}>
+              Booking Reference
             </Text>
 
-            <Text style={styles.passcode}>
-              #{bookingRef}
+            <Text style={styles.detailValue}>
+              {bookingRef}
             </Text>
           </View>
-        </TouchableOpacity>
 
-        {/* Quick Balance Top-Up */}
+          <View style={styles.detailDivider} />
 
-        <View style={styles.sectionHeaderRow}>
-          <Text style={styles.sectionTitle}>
-            Quick Balance Top-Up
-          </Text>
+          <View style={styles.detailRow}>
+            <Text style={styles.detailLabel}>
+              Ticket Token
+            </Text>
 
-          <Text style={styles.instantCredit}>
-            Instant Credit
-          </Text>
-        </View>
-
-        <View style={styles.topUpRow}>
-          {['200', '500', '1,000', '2,500'].map((amount) => (
-            <TouchableOpacity
-              key={amount}
-              style={styles.topUpCard}
+            <Text
+              style={styles.detailValue}
+              numberOfLines={1}
             >
-              <Text style={styles.topUpCurrency}>
-                LKR
-              </Text>
+              {ticketToken}
+            </Text>
+          </View>
 
-              <Text style={styles.topUpAmount}>
-                {amount}
-              </Text>
-            </TouchableOpacity>
-          ))}
+          <View style={styles.detailDivider} />
+
+          <View style={styles.detailRow}>
+            <Text style={styles.detailLabel}>
+              Number of Tickets
+            </Text>
+
+            <Text style={styles.detailValue}>
+              {totalTickets}
+            </Text>
+          </View>
+
+          {ticketId ? (
+            <>
+              <View style={styles.detailDivider} />
+
+              <View style={styles.detailRow}>
+                <Text style={styles.detailLabel}>
+                  Database Ticket ID
+                </Text>
+
+                <Text
+                  style={styles.detailValueSmall}
+                  numberOfLines={1}
+                >
+                  {ticketId}
+                </Text>
+              </View>
+            </>
+          ) : null}
         </View>
 
-        <Text style={styles.paymentMethods}>
-          Supported:  LankaQR • FriMi • eZ Cash • Visa / Mastercard
-        </Text>
+        {/* Actions */}
 
-        {/* Recent Rides */}
-
-        <View style={styles.sectionHeaderRow}>
-          <Text style={styles.sectionTitle}>
-            Recent Rides & Loads
-          </Text>
-
-          <TouchableOpacity>
-            <Text style={styles.viewAll}>
-              View All (34)
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.rideCard}>
-          <View style={styles.rideIcon}>
-            <Ionicons
-              name="bus-outline"
-              size={21}
-              color="#002060"
-            />
-          </View>
-
-          <View style={styles.rideInfo}>
-            <Text style={styles.rideTitle}>
-              Route 177 AC Bus
-            </Text>
-
-            <Text style={styles.rideDescription}>
-              Kollupitiya → Kaduwela • 08:15 AM
-            </Text>
-          </View>
-
-          <View style={styles.rideAmountContainer}>
-            <Text style={styles.rideAmountNegative}>
-              − LKR 160.00
-            </Text>
-
-            <Text style={styles.settled}>
-              Settled
-            </Text>
-          </View>
-        </View>
-
-        <View style={styles.rideCard}>
-          <View style={styles.trainIcon}>
-            <Ionicons
-              name="train-outline"
-              size={21}
-              color="#007F78"
-            />
-          </View>
-
-          <View style={styles.rideInfo}>
-            <Text style={styles.rideTitle}>
-              Coastal Commuter Train
-            </Text>
-
-            <Text style={styles.rideDescription}>
-              Fort → Bambalapitiya (2nd Class) • Yesterday
-            </Text>
-          </View>
-
-          <View style={styles.rideAmountContainer}>
-            <Text style={styles.rideAmountNegative}>
-              − LKR 40.00
-            </Text>
-
-            <Text style={styles.settled}>
-              Settled
-            </Text>
-          </View>
-        </View>
-
-        <View style={styles.rideCard}>
-          <View style={styles.topupIcon}>
-            <Ionicons
-              name="business-outline"
-              size={21}
-              color="#00897B"
-            />
-          </View>
-
-          <View style={styles.rideInfo}>
-            <Text style={styles.rideTitle}>
-              LankaPay Instant Top-Up
-            </Text>
-
-            <Text style={styles.rideDescription}>
-              Commercial Bank of Ceylon • 22 Oct
-            </Text>
-          </View>
-
-          <View style={styles.rideAmountContainer}>
-            <Text style={styles.rideAmountPositive}>
-              + LKR 1,000.00
-            </Text>
-
-            <Text style={styles.completed}>
-              Completed
-            </Text>
-          </View>
-        </View>
-
-        {/* Approval note */}
-
-        <View style={styles.approvalBox}>
+        <Pressable
+          style={styles.primaryButton}
+          onPress={() =>
+            router.push(
+              '/passenger/search' as any,
+            )
+          }
+        >
           <Ionicons
-            name="shield-checkmark-outline"
-            size={20}
-            color="#002060"
+            name="add-circle-outline"
+            size={19}
+            color="#FFFFFF"
           />
 
-          <Text style={styles.approvalText}>
-            Approved by National Transport Commission (NTC) &
-            Sri Lanka Railways for interoperable contactless
-            ticketing across Western Province bus networks and
-            national rail lines.
+          <Text style={styles.primaryButtonText}>
+            Purchase Another Ticket
           </Text>
-        </View>
+        </Pressable>
 
-        <View style={{ height: 20 }} />
+        {loading ? (
+          <Text style={styles.loadingText}>
+            Loading saved ticket...
+          </Text>
+        ) : null}
       </ScrollView>
     </SafeAreaView>
   );
@@ -719,869 +657,527 @@ export default function TransitPassScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#F8F9FF',
+    backgroundColor: '#F8FAFC',
   },
 
-  container: {
-    paddingHorizontal: 16,
-    paddingBottom: 90,
+  scrollView: {
+    flex: 1,
   },
 
-  /* Header */
+  content: {
+    paddingHorizontal: 18,
+    paddingTop: 10,
+    paddingBottom: 30,
+  },
 
   header: {
-    height: 70,
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
   },
 
-  brandContainer: {
+  brandRow: {
     flexDirection: 'row',
     alignItems: 'center',
   },
 
-  logoBox: {
-    width: 38,
-    height: 38,
-    borderRadius: 9,
-    backgroundColor: '#087F8C',
+  logo: {
+    width: 42,
+    height: 42,
+    borderRadius: 13,
+    backgroundColor: '#002060',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 8,
+    marginRight: 10,
   },
 
-  brandName: {
+  brand: {
     fontSize: 18,
-    fontWeight: '800',
+    fontWeight: '900',
     color: '#002060',
   },
 
-  brandSubtitle: {
+  brandSub: {
+    marginTop: 1,
     fontSize: 8,
-    fontWeight: '700',
+    fontWeight: '800',
+    letterSpacing: 1.6,
     color: '#64748B',
-    letterSpacing: 0.6,
   },
 
-  headerActions: {
+  liveBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 7,
-  },
-
-  livePill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#D7FAF4',
-    borderRadius: 18,
+    backgroundColor: '#ECFDF5',
     paddingHorizontal: 10,
-    paddingVertical: 7,
+    paddingVertical: 6,
+    borderRadius: 20,
   },
 
   liveDot: {
     width: 7,
     height: 7,
     borderRadius: 4,
-    backgroundColor: '#00897B',
-    marginRight: 5,
+    backgroundColor: '#10B981',
+    marginRight: 6,
   },
 
   liveText: {
-    color: '#00796B',
+    color: '#047857',
     fontSize: 10,
-    fontWeight: '700',
-  },
-
-  languageButton: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: '#173C91',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-
-  languageText: {
-    color: '#FFF',
     fontWeight: '800',
-    fontSize: 10,
   },
-
-  profileButton: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: '#002060',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  /* Title */
 
   titleRow: {
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 14,
   },
 
-  titleLeft: {
+  title: {
+    fontSize: 22,
+    color: '#0F172A',
+    fontWeight: '900',
+  },
+
+  subtitle: {
+    marginTop: 3,
+    fontSize: 11,
+    color: '#64748B',
+  },
+
+  nfcBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-  },
-
-  pageTitle: {
-    fontSize: 19,
-    fontWeight: '800',
-    color: '#002060',
-  },
-
-  lkBadge: {
-    marginLeft: 5,
-    width: 21,
-    height: 21,
-    borderRadius: 11,
-    backgroundColor: '#B7F3E8',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  lkText: {
-    color: '#007F78',
-    fontSize: 9,
-    fontWeight: '800',
-  },
-
-  nfcReady: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#D7FAF4',
-    borderRadius: 15,
+    backgroundColor: '#E6FFFA',
+    borderRadius: 20,
     paddingHorizontal: 9,
     paddingVertical: 6,
   },
 
-  nfcDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: '#009688',
-    marginRight: 5,
-  },
-
   nfcText: {
-    color: '#00796B',
-    fontSize: 9,
-    fontWeight: '800',
-  },
-
-  /* Pass Card */
-
-  passCard: {
-    backgroundColor: '#16458F',
-    borderRadius: 20,
-    padding: 17,
-    marginBottom: 12,
-    overflow: 'hidden',
-  },
-
-  passTopRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-
-  passBrandRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-
-  contactlessIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    backgroundColor: 'rgba(255,255,255,0.16)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 8,
-  },
-
-  passBrand: {
-    color: '#FFF',
-    fontWeight: '800',
-    fontSize: 11,
-  },
-
-  passDescription: {
-    color: '#BFD0EC',
-    fontSize: 9,
-    marginTop: 2,
-  },
-
-  lankaPayBadge: {
-    backgroundColor: 'rgba(255,255,255,0.13)',
-    borderRadius: 7,
-    paddingHorizontal: 8,
-    paddingVertical: 5,
-  },
-
-  lankaPayText: {
-    color: '#FFF',
-    fontSize: 9,
-    fontWeight: '700',
-  },
-
-  balanceLabel: {
-    color: '#BFD0EC',
-    fontSize: 9,
-    fontWeight: '700',
-    letterSpacing: 1,
-    marginTop: 16,
-  },
-
-  balanceValue: {
-    color: '#FFF',
-    fontSize: 30,
-    fontWeight: '800',
-    marginTop: 2,
-  },
-
-  balanceCurrency: {
-    fontSize: 14,
-    fontWeight: '700',
-  },
-
-  autoReloadPill: {
-    position: 'absolute',
-    right: 15,
-    top: 82,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#087F63',
-    borderRadius: 12,
-    paddingHorizontal: 8,
-    paddingVertical: 5,
-  },
-
-  autoReloadDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#57F4C9',
-    marginRight: 5,
-  },
-
-  autoReloadText: {
-    color: '#FFF',
-    fontSize: 9,
-    fontWeight: '700',
-  },
-
-  autoReloadAmount: {
-    position: 'absolute',
-    right: 17,
-    top: 110,
-    color: '#BFD0EC',
-    fontSize: 9,
-  },
-
-  passBottomRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 14,
-  },
-
-  cardLabel: {
-    color: '#AFC4E5',
-    fontSize: 8,
-    fontWeight: '700',
-    letterSpacing: 0.8,
-  },
-
-  cardValue: {
-    color: '#FFF',
-    fontSize: 13,
-    fontWeight: '700',
-    marginTop: 3,
-  },
-
-  commuterIdContainer: {
-    alignItems: 'flex-end',
-  },
-
-  commuterId: {
-    color: '#70E7D8',
-    fontSize: 12,
-    fontWeight: '700',
-    marginTop: 3,
-  },
-
-  /* Actions */
-
-  actionRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginBottom: 10,
-  },
-
-  actionCard: {
-    flex: 1,
-    backgroundColor: '#EEF0FF',
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 11,
-  },
-
-  actionTitle: {
-    color: '#17223B',
-    fontSize: 11,
-    fontWeight: '800',
-    marginTop: 4,
-  },
-
-  actionSub: {
-    color: '#64748B',
-    fontSize: 9,
-    marginTop: 1,
-  },
-
-  /* QR/NFC */
-
-  modeSelector: {
-    height: 43,
-    backgroundColor: '#E9ECFB',
-    borderRadius: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 4,
-    marginBottom: 10,
-  },
-
-  qrModeActive: {
-    flex: 1,
-    height: 35,
-    backgroundColor: '#FFF',
-    borderRadius: 9,
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-
-  qrModeText: {
-    color: '#002060',
-    fontSize: 11,
-    fontWeight: '800',
-    marginLeft: 6,
-  },
-
-  nfcMode: {
-    flex: 1,
-    height: 35,
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-
-  nfcModeText: {
-    color: '#64748B',
-    fontSize: 11,
-    fontWeight: '700',
-    marginLeft: 6,
-  },
-
-  /* Security */
-
-  securityCard: {
-    backgroundColor: '#FFF',
-    borderRadius: 16,
-    padding: 12,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: '#E2E5F0',
-  },
-
-  securityHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-
-  securityTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-
-  securityDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#00897B',
-    marginRight: 6,
-  },
-
-  securityTitle: {
     color: '#007F78',
-    fontSize: 12,
-    fontWeight: '800',
-  },
-
-  refreshPill: {
-    backgroundColor: '#EEF0F9',
-    borderRadius: 12,
-    paddingHorizontal: 7,
-    paddingVertical: 4,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-
-  refreshText: {
-    color: '#64748B',
-    fontSize: 8,
-    fontWeight: '700',
-    marginLeft: 3,
-  },
-
-  qrWrapper: {
-    alignItems: 'center',
-    backgroundColor: '#F1F3FF',
-    borderRadius: 12,
-    paddingVertical: 10,
-  },
-
-  qrCodeContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 8,
-    padding: 4,
-  },
-
-  qrCodeText: {
-    color: '#475569',
-    fontSize: 8,
-    fontWeight: '600',
-    marginTop: 6,
-  },
-
-  offlineBox: {
-    flexDirection: 'row',
-    backgroundColor: '#EEF0FF',
-    borderRadius: 11,
-    padding: 10,
-    marginTop: 9,
-  },
-
-  offlineTextContainer: {
-    flex: 1,
-    marginLeft: 7,
-  },
-
-  offlineTitle: {
-    color: '#17223B',
-    fontSize: 11,
-    fontWeight: '800',
-  },
-
-  offlineDescription: {
-    color: '#64748B',
-    fontSize: 10,
-    lineHeight: 14,
-    marginTop: 2,
-  },
-
-  conductorTestButton: {
-    backgroundColor: '#EFF6FF',
-    borderRadius: 10,
-    height: 42,
-    marginTop: 9,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexDirection: 'row',
-    borderWidth: 1,
-    borderColor: '#BFDBFE',
-  },
-
-  conductorTestButtonText: {
-    color: '#002060',
-    fontSize: 12,
-    fontWeight: '800',
-    marginLeft: 7,
-  },
-
-  brightnessButton: {
-    backgroundColor: '#E9ECFF',
-    borderRadius: 10,
-    height: 42,
-    marginTop: 9,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexDirection: 'row',
-  },
-
-  brightnessText: {
-    color: '#002060',
-    fontSize: 12,
-    fontWeight: '800',
-    marginLeft: 7,
-  },
-
-  /* Current Ticket */
-
-  currentTicketCard: {
-    backgroundColor: '#FFF',
-    borderRadius: 15,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: '#E2E5F0',
-    marginBottom: 14,
-  },
-
-  ticketHeader: {
-    height: 32,
-    backgroundColor: '#1E4092',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 10,
-  },
-
-  ticketHeaderLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-
-  ticketHeaderText: {
-    color: '#FFF',
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: '800',
     marginLeft: 4,
   },
 
-  inTransitBadge: {
-    backgroundColor: '#168E79',
-    borderRadius: 9,
-    paddingHorizontal: 7,
-    paddingVertical: 3,
+  transitCard: {
+    backgroundColor: '#002060',
+    borderRadius: 22,
+    padding: 20,
+    marginBottom: 16,
   },
 
-  inTransitText: {
-    color: '#FFF',
-    fontSize: 8,
+  transitTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+
+  transitLabel: {
+    color: '#A5B4FC',
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 1,
+  },
+
+  transitId: {
+    color: '#FFFFFF',
+    marginTop: 4,
+    fontSize: 15,
     fontWeight: '800',
   },
 
-  ticketBody: {
-    padding: 10,
+  routeLabel: {
+    marginTop: 28,
+    fontSize: 9,
+    color: '#94A3B8',
+    fontWeight: '700',
+  },
+
+  routeRow: {
+    marginTop: 8,
     flexDirection: 'row',
+    alignItems: 'center',
+  },
+
+  routeNumberBadge: {
+    minWidth: 52,
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+    borderRadius: 10,
     alignItems: 'center',
   },
 
   routeNumber: {
-    backgroundColor: '#173F91',
-    borderRadius: 7,
-    paddingHorizontal: 9,
-    paddingVertical: 6,
+    fontSize: 16,
+    fontWeight: '900',
+    color: '#002060',
   },
 
-  routeNumberText: {
-    color: '#FFF',
+  routeTextContainer: {
+    marginLeft: 12,
+    flex: 1,
+  },
+
+  routeText: {
+    color: '#FFFFFF',
     fontSize: 14,
     fontWeight: '800',
   },
 
-  routeInfo: {
-    flex: 1,
-    marginLeft: 7,
+  serviceText: {
+    color: '#CBD5E1',
+    marginTop: 3,
+    fontSize: 10,
   },
 
-  routeName: {
-    color: '#17223B',
-    fontSize: 13,
-    fontWeight: '800',
+  transitBottomRow: {
+    marginTop: 24,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.15)',
+    paddingTop: 15,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
   },
 
-  routeType: {
-    color: '#64748B',
-    fontSize: 9,
-    marginTop: 2,
+  smallLabel: {
+    fontSize: 8,
+    color: '#94A3B8',
+    fontWeight: '700',
   },
 
-  fareContainer: {
-    alignItems: 'flex-end',
+  smallValue: {
+    marginTop: 4,
+    fontSize: 11,
+    color: '#FFFFFF',
+    fontWeight: '700',
   },
 
   fare: {
-    color: '#173F91',
-    fontSize: 16,
-    fontWeight: '900',
-  },
-
-  fareType: {
-    color: '#64748B',
-    fontSize: 8,
-    marginTop: 2,
-  },
-
-  journeyProgress: {
-    paddingHorizontal: 10,
-    paddingBottom: 8,
-  },
-
-  progressRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-
-  progressIcon: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: '#DDF8F1',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  progressIconEnd: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: '#F0F1F5',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  progressText: {
-    flex: 1,
-    color: '#00897B',
-    fontSize: 9,
-    fontWeight: '700',
-    marginLeft: 5,
-  },
-
-  progressTextEnd: {
-    flex: 1,
-    color: '#64748B',
-    fontSize: 9,
-    fontWeight: '700',
-    marginLeft: 5,
-  },
-
-  progressTime: {
-    color: '#475569',
-    fontSize: 8,
-    fontWeight: '700',
-  },
-
-  etaText: {
-    color: '#00897B',
-    fontSize: 8,
-    fontWeight: '800',
-  },
-
-  progressLineContainer: {
-    height: 10,
-    marginLeft: 9,
-    justifyContent: 'center',
-  },
-
-  progressLine: {
-    width: '60%',
-    height: 4,
-    borderRadius: 3,
-    backgroundColor: '#00897B',
-  },
-
-  passcodeBox: {
-    marginHorizontal: 10,
-    marginBottom: 10,
-    borderRadius: 9,
-    backgroundColor: '#E9ECFF',
-    padding: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  passcodeText: {
-    color: '#334155',
-    fontSize: 9,
-    fontWeight: '600',
-    marginLeft: 5,
-  },
-
-  passcode: {
-    color: '#173F91',
-    fontSize: 10,
-    fontWeight: '900',
-    marginLeft: 4,
-  },
-
-  /* Sections */
-
-  sectionHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 7,
-  },
-
-  sectionTitle: {
-    color: '#17223B',
-    fontSize: 14,
-    fontWeight: '800',
-  },
-
-  instantCredit: {
-    color: '#007F78',
-    fontSize: 9,
-    fontWeight: '800',
-  },
-
-  topUpRow: {
-    flexDirection: 'row',
-    gap: 7,
-  },
-
-  topUpCard: {
-    flex: 1,
-    backgroundColor: '#FFF',
-    borderRadius: 10,
-    paddingVertical: 9,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#E2E5F0',
-  },
-
-  topUpCurrency: {
-    color: '#64748B',
-    fontSize: 7,
-    fontWeight: '700',
-  },
-
-  topUpAmount: {
-    color: '#002060',
-    fontSize: 13,
-    fontWeight: '900',
-    marginTop: 1,
-  },
-
-  paymentMethods: {
-    color: '#475569',
-    textAlign: 'center',
-    fontSize: 8,
-    marginVertical: 9,
-  },
-
-  viewAll: {
-    color: '#007F78',
-    fontSize: 9,
-    fontWeight: '800',
-  },
-
-  /* Ride Cards */
-
-  rideCard: {
-    backgroundColor: '#FFF',
-    borderRadius: 12,
-    padding: 9,
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 7,
-    borderWidth: 1,
-    borderColor: '#E6E8F0',
-  },
-
-  rideIcon: {
-    width: 38,
-    height: 38,
-    borderRadius: 11,
-    backgroundColor: '#E9EEFF',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  trainIcon: {
-    width: 38,
-    height: 38,
-    borderRadius: 11,
-    backgroundColor: '#D9FAF3',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  topupIcon: {
-    width: 38,
-    height: 38,
-    borderRadius: 11,
-    backgroundColor: '#DDF8F1',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  rideInfo: {
-    flex: 1,
-    marginLeft: 8,
-  },
-
-  rideTitle: {
-    color: '#17223B',
-    fontSize: 10,
-    fontWeight: '800',
-  },
-
-  rideDescription: {
-    color: '#64748B',
-    fontSize: 8,
     marginTop: 3,
+    color: '#FFFFFF',
+    fontWeight: '900',
+    fontSize: 14,
   },
 
-  rideAmountContainer: {
+  alignRight: {
     alignItems: 'flex-end',
   },
 
-  rideAmountNegative: {
-    color: '#DC2626',
-    fontSize: 10,
-    fontWeight: '900',
+  qrCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 22,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    marginBottom: 16,
   },
 
-  rideAmountPositive: {
-    color: '#00897B',
-    fontSize: 10,
-    fontWeight: '900',
+  qrHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
 
-  settled: {
+  qrTitle: {
+    fontSize: 16,
+    fontWeight: '900',
+    color: '#0F172A',
+  },
+
+  qrSubtitle: {
+    fontSize: 10,
     color: '#64748B',
-    fontSize: 8,
-    marginTop: 2,
+    marginTop: 3,
   },
 
-  completed: {
-    color: '#00897B',
-    fontSize: 8,
-    marginTop: 2,
-  },
-
-  /* Approval */
-
-  approvalBox: {
-    backgroundColor: '#E9ECFF',
-    borderRadius: 11,
-    padding: 10,
+  verifiedBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 4,
+    backgroundColor: '#ECFDF5',
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    borderRadius: 14,
   },
 
-  approvalText: {
-    flex: 1,
-    color: '#475569',
+  verifiedText: {
+    marginLeft: 4,
+    fontSize: 9,
+    fontWeight: '900',
+    color: '#047857',
+  },
+
+  qrWrapper: {
+    alignSelf: 'center',
+    marginTop: 20,
+    backgroundColor: '#FFFFFF',
+    padding: 8,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 18,
+  },
+
+  tokenLabel: {
+    textAlign: 'center',
+    marginTop: 14,
     fontSize: 8,
-    lineHeight: 12,
+    fontWeight: '700',
+    color: '#94A3B8',
+  },
+
+  tokenValue: {
+    textAlign: 'center',
+    marginTop: 4,
+    color: '#002060',
+    fontSize: 11,
+    fontWeight: '900',
+  },
+
+  offlineBox: {
+    marginTop: 15,
+    flexDirection: 'row',
+    backgroundColor: '#F0FDFA',
+    padding: 12,
+    borderRadius: 14,
+  },
+
+  offlineTextContainer: {
+    flex: 1,
+    marginLeft: 9,
+  },
+
+  offlineTitle: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#0F766E',
+  },
+
+  offlineText: {
+    marginTop: 2,
+    fontSize: 9,
+    lineHeight: 14,
+    color: '#64748B',
+  },
+
+  scanTestButton: {
+    marginTop: 14,
+    backgroundColor: '#002060',
+    paddingVertical: 12,
+    borderRadius: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  scanTestText: {
+    color: '#FFFFFF',
+    marginLeft: 8,
+    fontWeight: '800',
+    fontSize: 12,
+  },
+
+  journeyCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    marginBottom: 16,
+  },
+
+  journeyHeader: {
+    backgroundColor: '#002060',
+    paddingHorizontal: 15,
+    paddingVertical: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+
+  journeyHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+
+  journeyHeaderText: {
     marginLeft: 7,
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '900',
+  },
+
+  activeBadge: {
+    backgroundColor: '#ECFDF5',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+
+  activeBadgeText: {
+    color: '#047857',
+    fontWeight: '900',
+    fontSize: 8,
+  },
+
+  journeyBody: {
+    padding: 16,
+  },
+
+  stationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+
+  stationIconStart: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#E6FFFA',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  stationIconEnd: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#F1F5F9',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  stationDetails: {
+    flex: 1,
+    marginLeft: 11,
+  },
+
+  stationLabel: {
+    fontSize: 8,
+    color: '#94A3B8',
+    fontWeight: '700',
+  },
+
+  stationName: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#0F172A',
+    marginTop: 2,
+  },
+
+  stationTime: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#002060',
+  },
+
+  timeline: {
+    height: 24,
+    marginLeft: 16,
+  },
+
+  timelineLine: {
+    width: 2,
+    height: 24,
+    backgroundColor: '#CBD5E1',
+  },
+
+  journeyFooter: {
+    backgroundColor: '#F8FAFC',
+    paddingHorizontal: 15,
+    paddingVertical: 12,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+
+  footerLabel: {
+    fontSize: 8,
+    fontWeight: '700',
+    color: '#94A3B8',
+  },
+
+  footerValue: {
+    marginTop: 3,
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#334155',
+  },
+
+  detailsCard: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 18,
+    padding: 16,
+    marginBottom: 16,
+  },
+
+  detailsTitle: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: '#0F172A',
+    marginBottom: 12,
+  },
+
+  detailRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+
+  detailLabel: {
+    fontSize: 10,
+    color: '#64748B',
+  },
+
+  detailValue: {
+    flex: 1,
+    marginLeft: 20,
+    textAlign: 'right',
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#002060',
+  },
+
+  detailValueSmall: {
+    flex: 1,
+    marginLeft: 20,
+    textAlign: 'right',
+    fontSize: 8,
+    fontWeight: '700',
+    color: '#334155',
+  },
+
+  detailDivider: {
+    marginVertical: 11,
+    height: 1,
+    backgroundColor: '#F1F5F9',
+  },
+
+  primaryButton: {
+    backgroundColor: '#002060',
+    paddingVertical: 14,
+    borderRadius: 15,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  primaryButtonText: {
+    marginLeft: 8,
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+
+  loadingText: {
+    textAlign: 'center',
+    color: '#94A3B8',
+    fontSize: 9,
+    marginTop: 10,
   },
 });
