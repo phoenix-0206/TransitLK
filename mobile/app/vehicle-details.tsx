@@ -105,8 +105,8 @@ export default function VehicleDetailsScreen() {
     const { data, error } = await supabase.from('saved_routes').insert({
       user_id: user.id,
       route_number: bus.bus_number,
-      origin: schedule?.origin ?? null,
-      destination: schedule?.destination ?? null,
+      origin: schedule?.origin ?? bus.route_name.split('-')[0]?.trim() ?? null,
+      destination: schedule?.destination ?? bus.route_name.split('-').slice(1).join('-').trim() ?? null,
     }).select('id').single();
     if (error) {
       Alert.alert('Could not save route', error.message);

@@ -37,9 +37,6 @@ export default function RootLayout() {
     if (!isReady) return;
 
     const inAuthGroup = segments[0] === '(tabs)';
-    const authOnlyScreens = ['login', 'signup', 'otp'];
-    const onAuthScreen = authOnlyScreens.includes(segments[0] as string);
-
     if (!launchSplashShown.current) {
       launchSplashShown.current = true;
       if ((segments[0] as string) !== 'index') {
@@ -54,23 +51,6 @@ export default function RootLayout() {
       router.replace('/login');
     }
 
-    // Already logged in and opens login/signup screens
-    else if (session && onAuthScreen) {
-      // Let a freshly created account finish its registration transition.
-      if (
-        segments[0] === 'signup' &&
-        session.user.user_metadata?.pass_setup_pending
-      ) {
-        return;
-      }
-
-      // New accounts finish pass setup after successful sign-in.
-      router.replace(
-        session.user.user_metadata?.pass_setup_pending
-          ? '/pass-activation'
-          : '/(tabs)'
-      );
-    }
   }, [session, segments, isReady]);
 
   const isConductorDashboard = segments[0] === 'conductor' && segments[1] === 'dashboard';

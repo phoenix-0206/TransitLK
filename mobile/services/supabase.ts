@@ -2,18 +2,6 @@ import 'react-native-url-polyfill/auto';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createClient } from '@supabase/supabase-js';
 
-// Polyfill WebSocket for Node.js SSR environments
-if (typeof window === 'undefined') {
-  try {
-    const ws = require('ws');
-    if (typeof globalThis !== 'undefined' && !(globalThis as any).WebSocket) {
-      (globalThis as any).WebSocket = ws;
-    }
-  } catch (e) {
-    // ignore
-  }
-}
-
 const supabaseUrl =
   process.env.EXPO_PUBLIC_SUPABASE_URL || 'https://yjdbmnkcjiqxcpnoovhz.supabase.co';
 const supabaseAnonKey =

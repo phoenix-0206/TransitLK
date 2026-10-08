@@ -15,7 +15,7 @@ export type BottomNavigationItem = {
 
 const commuterItems: BottomNavigationItem[] = [
   { key: 'home', label: 'Home', icon: 'home-outline', route: '/home' },
-  { key: 'map', label: 'Map / Track', icon: 'map-outline', route: '/' },
+  { key: 'map', label: 'Map / Track', icon: 'map-outline', route: '/(tabs)' },
   { key: 'tickets', label: 'Tickets', icon: 'ticket-outline', route: '/two' },
   { key: 'profile', label: 'Profile', icon: 'person-outline', route: '/profile' },
 ];
@@ -32,7 +32,7 @@ export default function BottomNavigation({ items = commuterItems }: BottomNaviga
     if (item.active !== undefined) return item.active;
     if (item.key === 'home') return pathname.endsWith('/home');
     if (item.key === 'map') {
-      return pathname === '/' || ['/interactive-route-map', '/vehicle-details', '/LiveMapScreen'].some((route) => pathname.endsWith(route));
+      return pathname === '/(tabs)' || pathname.endsWith('/index') || ['/interactive-route-map', '/vehicle-details', '/LiveMapScreen'].some((route) => pathname.endsWith(route));
     }
     if (item.key === 'tickets') return pathname.endsWith('/two') || pathname.endsWith('/timetable-schedules');
     if (item.key === 'profile') return pathname.endsWith('/profile') && !pathname.includes('/conductor/');

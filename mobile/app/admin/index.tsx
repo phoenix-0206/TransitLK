@@ -298,6 +298,10 @@ export default function AdminDashboardScreen() {
                   <Text style={styles.cardTitle}>{item.full_name || 'No Name'}</Text>
                   <Text style={styles.cardSub}>Phone: {item.phone_number || 'N/A'}</Text>
                   <Text style={styles.cardSub}>Role: {item.role || 'commuter'} • Category: {item.pass_category || 'regular'}</Text>
+                  <Text style={styles.cardSub}>User ID: {item.id}</Text>
+                  <Text style={styles.cardSub}>
+                    Joined: {item.created_at ? new Date(item.created_at).toLocaleDateString() : 'N/A'}
+                  </Text>
                 </>
               )}
 

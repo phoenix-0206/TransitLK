@@ -14,7 +14,10 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
+import * as SecureStore from 'expo-secure-store';
 import { supabase } from '../services/supabase';
+
+const BIOMETRIC_LOGIN_KEY = 'transitlk.biometric-login-enabled';
 
 type ProfileData = {
   id: string;
@@ -133,6 +136,7 @@ export default function ProfileScreen() {
   }
 
   async function handleLogout() {
+    await SecureStore.deleteItemAsync(BIOMETRIC_LOGIN_KEY);
     const { error } = await supabase.auth.signOut();
     if (error) {
       Alert.alert('Could not log out', error.message);
