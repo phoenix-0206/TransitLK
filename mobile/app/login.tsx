@@ -8,6 +8,7 @@ import * as SecureStore from 'expo-secure-store';
 import { supabase } from '../services/supabase';
 
 const BIOMETRIC_LOGIN_KEY = 'transitlk.biometric-login-enabled';
+const BIOMETRIC_CREDENTIALS_KEY = 'transitlk.biometric-credentials';
 
 export default function LoginScreen() {
   const { notice } = useLocalSearchParams<{ notice?: string }>();
@@ -34,6 +35,9 @@ export default function LoginScreen() {
       if (mounted) {
         setBiometricAvailable(hasHardware && isEnrolled);
         setBiometricEnabled(enabled === 'true');
+        if (hasHardware && isEnrolled && enabled === 'true') {
+          void handleBiometricLogin();
+        }
       }
     }
 
@@ -78,6 +82,10 @@ export default function LoginScreen() {
         if (error) throw error;
         if (rememberMe && biometricAvailable) {
           await SecureStore.setItemAsync(BIOMETRIC_LOGIN_KEY, 'true');
+          await SecureStore.setItemAsync(
+            BIOMETRIC_CREDENTIALS_KEY,
+            JSON.stringify({ email: credentials.email, password }),
+          );
           setBiometricEnabled(true);
         }
         router.replace(data.session?.user.user_metadata?.pass_setup_pending ? '/pass-activation' : '/home');
@@ -112,17 +120,25 @@ export default function LoginScreen() {
         return;
       }
 
-      const { data, error } = await supabase.auth.getSession();
-      if (error) throw error;
-      if (!data.session) {
-        await SecureStore.deleteItemAsync(BIOMETRIC_LOGIN_KEY);
-        setBiometricEnabled(false);
-        setErrorMessage('Your saved session has expired. Please sign in with your password or OTP.');
-        return;
+      const storedCredentials = await SecureStore.getItemAsync(BIOMETRIC_CREDENTIALS_KEY);
+      if (storedCredentials) {
+        const credentials = JSON.parse(storedCredentials) as { email?: string; password?: string };
+        if (credentials.email && credentials.password) {
+          const { data, error } = await supabase.auth.signInWithPassword({
+            email: credentials.email,
+            password: credentials.password,
+          });
+          if (error) throw error;
+          router.replace(data.session?.user.user_metadata?.pass_setup_pending ? '/pass-activation' : '/home');
+          return;
+        }
       }
 
-      router.replace(data.session.user.user_metadata?.pass_setup_pending ? '/pass-activation' : '/home');
+      setErrorMessage('No saved biometric login was found. Please sign in with your password and enable Remember me.');
     } catch (error) {
+      await SecureStore.deleteItemAsync(BIOMETRIC_CREDENTIALS_KEY);
+      await SecureStore.deleteItemAsync(BIOMETRIC_LOGIN_KEY);
+      setBiometricEnabled(false);
       setErrorMessage(error instanceof Error ? error.message : 'Biometric login is unavailable. Please use password or OTP login.');
     } finally {
       setSubmitting(false);

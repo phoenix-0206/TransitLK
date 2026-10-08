@@ -10,14 +10,12 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import * as SecureStore from 'expo-secure-store';
 import { supabase } from '../services/supabase';
-
-const BIOMETRIC_LOGIN_KEY = 'transitlk.biometric-login-enabled';
 
 type ProfileData = {
   id: string;
@@ -136,7 +134,6 @@ export default function ProfileScreen() {
   }
 
   async function handleLogout() {
-    await SecureStore.deleteItemAsync(BIOMETRIC_LOGIN_KEY);
     const { error } = await supabase.auth.signOut();
     if (error) {
       Alert.alert('Could not log out', error.message);
@@ -198,7 +195,11 @@ export default function ProfileScreen() {
         <View style={styles.profileCard}>
           <View style={styles.profileCardGlow} />
           <View style={styles.avatarCircle}>
-            <Text style={styles.avatarText}>{initials}</Text>
+            {profile?.avatar_url ? (
+              <Image source={{ uri: profile.avatar_url }} style={styles.avatarImage} />
+            ) : (
+              <Text style={styles.avatarText}>{initials}</Text>
+            )}
             <View style={styles.onlineDot} />
           </View>
           <View style={styles.identityBlock}>
@@ -339,7 +340,8 @@ const styles = StyleSheet.create({
   headerIcon: { width: 40, height: 40, borderRadius: 13, backgroundColor: '#FFF', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#E2E8F0' },
   profileCard: { minHeight: 136, borderRadius: 20, backgroundColor: '#0B2F78', padding: 18, flexDirection: 'row', alignItems: 'center', overflow: 'hidden', shadowColor: '#0B2F78', shadowOpacity: 0.22, shadowRadius: 14, shadowOffset: { width: 0, height: 7 }, elevation: 4 },
   profileCardGlow: { position: 'absolute', width: 190, height: 190, borderRadius: 95, backgroundColor: '#16499C', right: -70, top: -95, opacity: 0.7 },
-  avatarCircle: { width: 70, height: 70, borderRadius: 35, backgroundColor: '#1763A5', alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: '#75F3D8' },
+  avatarCircle: { width: 70, height: 70, borderRadius: 35, backgroundColor: '#1763A5', alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: '#75F3D8', overflow: 'hidden' },
+  avatarImage: { width: '100%', height: '100%' },
   avatarText: { color: '#FFF', fontSize: 23, fontWeight: '900' },
   onlineDot: { width: 12, height: 12, borderRadius: 6, backgroundColor: '#5BFFBD', position: 'absolute', right: 1, bottom: 5, borderWidth: 2, borderColor: '#0B2F78' },
   identityBlock: { flex: 1, marginLeft: 13 },
