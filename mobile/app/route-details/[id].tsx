@@ -1,6 +1,8 @@
+
 import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect } from 'expo-router';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   SafeAreaView,
   ScrollView,
@@ -9,124 +11,244 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-
 import { supabase } from '../../services/supabase';
+
+type CrowdingLevel =
+  | 'Low'
+  | 'Medium'
+  | 'High'
+  | 'No data'
+  | 'Unavailable';
+
 const stops = [
-  {
-    name: 'Pettah',
-    time: 'Departed',
-    status: 'completed',
-  },
-  {
-    name: 'Town Hall',
-    time: 'Departed',
-    status: 'completed',
-  },
-  {
-    name: 'Nugegoda',
-    time: 'Current location',
-    status: 'current',
-  },
-  {
-    name: 'Maharagama',
-    time: '10 min',
-    status: 'upcoming',
-  },
-  {
-    name: 'Homagama',
-    time: '25 min',
-    status: 'upcoming',
-  },
+  { name: 'Pettah', time: 'Departed', status: 'completed' },
+  { name: 'Town Hall', time: 'Departed', status: 'completed' },
+  { name: 'Nugegoda', time: 'Current location', status: 'current' },
+  { name: 'Maharagama', time: '10 min', status: 'upcoming' },
+  { name: 'Homagama', time: '25 min', status: 'upcoming' },
 ];
 
-export default function RouteDetailsScreen() {
-const router = useRouter();
-const { id } = useLocalSearchParams();
-
-const routeNumber = Array.isArray(id) ? id[0] : id || '138';
-
-const [userId, setUserId] = useState<string | null>(null);
-const [savedRouteId, setSavedRouteId] = useState<string | null>(null);
-const [saving, setSaving] = useState(false);
-
-useEffect(() => {
-  const loadSavedRoute = async () => {
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser();
-
-    if (userError || !user) {
-      console.log('ROUTE DETAILS USER: NO USER');
-      return;
-    }
-
-    setUserId(user.id);
-
-    const { data, error } = await supabase
-      .from('saved_routes')
-      .select('id')
-      .eq('user_id', user.id)
-      .eq('route_number', routeNumber)
-      .maybeSingle();
-
-    if (error) {
-      console.log('SAVED ROUTE READ ERROR:', error);
-      return;
-    }
-
-    setSavedRouteId(data?.id ?? null);
-  };
-
-  loadSavedRoute();
-}, [routeNumber]);
-
-const handleSaveRoute = async () => {
-  if (!userId || saving) {
-    return;
-  }
-
-  setSaving(true);
-
-  try {
-    if (savedRouteId) {
-      const { error } = await supabase
-        .from('saved_routes')
-        .delete()
-        .eq('id', savedRouteId)
-        .eq('user_id', userId);
-
-      if (error) {
-        console.log('REMOVE ROUTE ERROR:', error);
-        return;
-      }
-
-      setSavedRouteId(null);
-      console.log('ROUTE REMOVED SUCCESSFULLY');
-    } else {
-      const { data, error } = await supabase
-        .from('saved_routes')
-        .insert({
-          user_id: userId,
-          route_number: routeNumber,
-          origin: 'Pettah',
-          destination: 'Homagama',
-        })
-        .select('id')
-        .single();
-
-      if (error) {
-        console.log('SAVE ROUTE ERROR:', error);
-        return;
-      }
-
-      setSavedRouteId(data.id);
-      console.log('ROUTE SAVED SUCCESSFULLY');
-    }
-  } finally {
-    setSaving(false);
+const getCrowdingColor = (level: CrowdingLevel) => {
+  switch (level) {
+    case 'High':
+      return '#DC2626';
+    case 'Medium':
+      return '#D97706';
+    case 'Low':
+      return '#16A34A';
+    default:
+      return '#6B7280';
   }
 };
+
+export default function RouteDetailsScreen() {
+  const router = useRouter();
+  const { id } = useLocalSearchParams<{ id?: string | string[] }>();
+
+  const routeNumber = Array.isArray(id)
+    ? id[0] || '138'
+    : id || '138';
+
+  const [crowdingLevel, setCrowdingLevel] =
+    useState<CrowdingLevel>('No data');
+
+  const [crowdingLoading, setCrowdingLoading] = useState(true);
+
+  const [userId, setUserId] = useState<string | null>(null);
+  const [savedRouteId, setSavedRouteId] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  // Refresh crowding every time this screen receives focus.
+  // Uses the same calculation as Smart Crowding.
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+
+      const loadCrowding = async () => {
+        setCrowdingLoading(true);
+        setCrowdingLevel('No data');
+
+        try {
+          const { data, error } = await supabase
+            .from('crowding_reports')
+            .select('crowding_level')
+            .eq('route_number', routeNumber)
+            .order('created_at', { ascending: false })
+            .limit(100);
+
+          if (!active) return;
+
+          if (error) {
+            console.log('CROWDING READ ERROR:', error);
+            setCrowdingLevel('Unavailable');
+            return;
+          }
+
+          const scores: number[] = [];
+
+for (const report of data ?? []) {
+  const level = report.crowding_level
+    ?.trim()
+    .toLowerCase();
+
+  if (level === 'low') {
+    scores.push(1);
+  } else if (level === 'medium') {
+    scores.push(2);
+  } else if (level === 'high') {
+    scores.push(3);
+  }
+}
+
+          if (scores.length === 0) {
+            setCrowdingLevel('No data');
+            return;
+          }
+
+          const average =
+            scores.reduce((sum, score) => sum + score, 0) /
+            scores.length;
+
+          const calculatedLevel: CrowdingLevel =
+            average < 1.5
+              ? 'Low'
+              : average < 2.5
+                ? 'Medium'
+                : 'High';
+
+          setCrowdingLevel(calculatedLevel);
+        } catch (error) {
+          console.log('CROWDING FETCH ERROR:', error);
+
+          if (active) {
+            setCrowdingLevel('Unavailable');
+          }
+        } finally {
+          if (active) {
+            setCrowdingLoading(false);
+          }
+        }
+      };
+
+      loadCrowding();
+
+      return () => {
+        active = false;
+      };
+    }, [routeNumber])
+  );
+
+  // Existing saved-routes functionality.
+  useEffect(() => {
+    let active = true;
+
+    const loadSavedRoute = async () => {
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (!active) return;
+
+      if (userError || !user) {
+        console.log('ROUTE DETAILS USER: NO USER');
+        setUserId(null);
+        setSavedRouteId(null);
+        return;
+      }
+
+      setUserId(user.id);
+
+      const { data, error } = await supabase
+        .from('saved_routes')
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('route_number', routeNumber)
+        .maybeSingle();
+
+      if (!active) return;
+
+      if (error) {
+        console.log('SAVED ROUTE READ ERROR:', error);
+        return;
+      }
+
+      setSavedRouteId(data?.id ?? null);
+    };
+
+    loadSavedRoute();
+
+    return () => {
+      active = false;
+    };
+  }, [routeNumber]);
+
+  const handleSaveRoute = async () => {
+    if (!userId || saving) return;
+
+    setSaving(true);
+
+    try {
+      if (savedRouteId) {
+        const { error } = await supabase
+          .from('saved_routes')
+          .delete()
+          .eq('id', savedRouteId)
+          .eq('user_id', userId);
+
+        if (error) {
+          console.log('REMOVE ROUTE ERROR:', error);
+          return;
+        }
+
+        setSavedRouteId(null);
+        console.log('ROUTE REMOVED SUCCESSFULLY');
+      } else {
+        const { data, error } = await supabase
+          .from('saved_routes')
+          .insert({
+            user_id: userId,
+            route_number: routeNumber,
+            origin: 'Pettah',
+            destination: 'Homagama',
+          })
+          .select('id')
+          .single();
+
+        if (error) {
+          console.log('SAVE ROUTE ERROR:', error);
+          return;
+        }
+
+        setSavedRouteId(data.id);
+        console.log('ROUTE SAVED SUCCESSFULLY');
+      }
+    } catch (error) {
+      console.log('SAVE ROUTE UNEXPECTED ERROR:', error);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const openCrowding = () => {
+    router.push({
+      pathname: '/crowding',
+      params: {
+        routeNumber: String(routeNumber),
+      },
+    });
+  };
+
+  const displayedCrowding = crowdingLoading
+    ? 'Loading...'
+    : crowdingLevel;
+
+  const crowdingDescription = crowdingLoading
+    ? 'Loading crowding...'
+    : crowdingLevel === 'No data' ||
+        crowdingLevel === 'Unavailable'
+      ? crowdingLevel
+      : `${crowdingLevel} crowding`;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -136,12 +258,20 @@ const handleSaveRoute = async () => {
           style={styles.backButton}
           onPress={() => router.back()}
         >
-          <Ionicons name="arrow-back" size={22} color="#111827" />
+          <Ionicons
+            name="arrow-back"
+            size={22}
+            color="#111827"
+          />
         </TouchableOpacity>
 
         <View style={styles.headerText}>
-          <Text style={styles.headerTitle}>Route Details</Text>
-          <Text style={styles.headerSubtitle}>Bus {id || '138'}</Text>
+          <Text style={styles.headerTitle}>
+            Route Details
+          </Text>
+          <Text style={styles.headerSubtitle}>
+            Bus {routeNumber}
+          </Text>
         </View>
 
         <TouchableOpacity style={styles.moreButton}>
@@ -161,12 +291,20 @@ const handleSaveRoute = async () => {
         <View style={styles.routeCard}>
           <View style={styles.routeTop}>
             <View>
-              <Text style={styles.routeLabel}>BUS ROUTE</Text>
-              <Text style={styles.routeNumber}>{id || '138'}</Text>
+              <Text style={styles.routeLabel}>
+                BUS ROUTE
+              </Text>
+              <Text style={styles.routeNumber}>
+                {routeNumber}
+              </Text>
             </View>
 
             <View style={styles.busIcon}>
-              <Ionicons name="bus" size={29} color="#2563EB" />
+              <Ionicons
+                name="bus"
+                size={29}
+                color="#2563EB"
+              />
             </View>
           </View>
 
@@ -174,8 +312,12 @@ const handleSaveRoute = async () => {
             <View style={styles.locationDot} />
 
             <View style={styles.locationTextContainer}>
-              <Text style={styles.locationLabel}>From</Text>
-              <Text style={styles.locationName}>Pettah</Text>
+              <Text style={styles.locationLabel}>
+                From
+              </Text>
+              <Text style={styles.locationName}>
+                Pettah
+              </Text>
             </View>
           </View>
 
@@ -185,8 +327,12 @@ const handleSaveRoute = async () => {
             <View style={styles.destinationDot} />
 
             <View style={styles.locationTextContainer}>
-              <Text style={styles.locationLabel}>To</Text>
-              <Text style={styles.locationName}>Homagama</Text>
+              <Text style={styles.locationLabel}>
+                To
+              </Text>
+              <Text style={styles.locationName}>
+                Homagama
+              </Text>
             </View>
           </View>
         </View>
@@ -195,45 +341,75 @@ const handleSaveRoute = async () => {
         <View style={styles.quickInfoRow}>
           <View style={styles.quickInfoCard}>
             <View style={styles.quickIconBlue}>
-              <Ionicons name="time-outline" size={21} color="#2563EB" />
+              <Ionicons
+                name="time-outline"
+                size={21}
+                color="#2563EB"
+              />
             </View>
 
-            <Text style={styles.quickLabel}>Arrival</Text>
-            <Text style={styles.quickValue}>25 min</Text>
+            <Text style={styles.quickLabel}>
+              Arrival
+            </Text>
+            <Text style={styles.quickValue}>
+              25 min
+            </Text>
           </View>
 
+          {/* Dynamic crowding card */}
           <TouchableOpacity
             style={styles.quickInfoCard}
             activeOpacity={0.8}
-            onPress={() =>
-  router.push({
-    pathname: '/crowding',
-  })
-}
+            onPress={openCrowding}
+            accessibilityRole="button"
+            accessibilityLabel="View crowding information"
           >
             <View style={styles.quickIconOrange}>
-              <Ionicons name="people-outline" size={21} color="#D97706" />
+              <Ionicons
+                name="people-outline"
+                size={21}
+                color={getCrowdingColor(crowdingLevel)}
+              />
             </View>
 
-            <Text style={styles.quickLabel}>Crowding</Text>
-            <Text style={styles.crowdingValue}>Medium</Text>
+            <Text style={styles.quickLabel}>
+              Crowding
+            </Text>
+
+            <Text
+              style={[
+                styles.crowdingValue,
+                {
+                  color: getCrowdingColor(crowdingLevel),
+                },
+              ]}
+            >
+              {displayedCrowding}
+            </Text>
           </TouchableOpacity>
         </View>
 
         {/* Route progress */}
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>ROUTE PROGRESS</Text>
+          <Text style={styles.sectionTitle}>
+            ROUTE PROGRESS
+          </Text>
 
           <View style={styles.liveBadge}>
             <View style={styles.liveDot} />
-            <Text style={styles.liveText}>LIVE</Text>
+            <Text style={styles.liveText}>
+              LIVE
+            </Text>
           </View>
         </View>
 
         <View style={styles.timelineCard}>
           {stops.map((stop, index) => {
-            const isCompleted = stop.status === 'completed';
-            const isCurrent = stop.status === 'current';
+            const isCompleted =
+              stop.status === 'completed';
+
+            const isCurrent =
+              stop.status === 'current';
 
             return (
               <View key={stop.name} style={styles.stopRow}>
@@ -253,7 +429,11 @@ const handleSaveRoute = async () => {
                       />
                     )}
 
-                    {isCurrent && <View style={styles.currentInnerDot} />}
+                    {isCurrent && (
+                      <View
+                        style={styles.currentInnerDot}
+                      />
+                    )}
                   </View>
 
                   {index !== stops.length - 1 && (
@@ -306,7 +486,9 @@ const handleSaveRoute = async () => {
         </View>
 
         {/* Service information */}
-        <Text style={styles.sectionTitle}>SERVICE INFORMATION</Text>
+        <Text style={styles.sectionTitle}>
+          SERVICE INFORMATION
+        </Text>
 
         <View style={styles.serviceCard}>
           <View style={styles.serviceRow}>
@@ -319,12 +501,18 @@ const handleSaveRoute = async () => {
             </View>
 
             <View style={styles.serviceText}>
-              <Text style={styles.serviceLabel}>Service Status</Text>
-              <Text style={styles.serviceValue}>Running with delay</Text>
+              <Text style={styles.serviceLabel}>
+                Service Status
+              </Text>
+              <Text style={styles.serviceValue}>
+                Running with delay
+              </Text>
             </View>
 
             <View style={styles.delayBadge}>
-              <Text style={styles.delayBadgeText}>+10 min</Text>
+              <Text style={styles.delayBadgeText}>
+                +10 min
+              </Text>
             </View>
           </View>
 
@@ -335,20 +523,32 @@ const handleSaveRoute = async () => {
               <Ionicons
                 name="people-outline"
                 size={21}
-                color="#D97706"
+                color={getCrowdingColor(crowdingLevel)}
               />
             </View>
 
             <View style={styles.serviceText}>
-              <Text style={styles.serviceLabel}>Passenger Capacity</Text>
-              <Text style={styles.serviceValue}>Medium crowding</Text>
+              <Text style={styles.serviceLabel}>
+                Passenger Capacity
+              </Text>
+
+              <Text
+                style={[
+                  styles.serviceValue,
+                  {
+                    color: getCrowdingColor(crowdingLevel),
+                  },
+                ]}
+              >
+                {crowdingDescription}
+              </Text>
             </View>
 
-            <TouchableOpacity onPress={() =>
-  router.push({
-    pathname: '/crowding',
-  })
-}>
+            <TouchableOpacity
+              onPress={openCrowding}
+              accessibilityRole="button"
+              accessibilityLabel="Open smart crowding details"
+            >
               <Ionicons
                 name="chevron-forward"
                 size={21}
@@ -360,29 +560,34 @@ const handleSaveRoute = async () => {
 
         {/* Save route */}
         <TouchableOpacity
-  style={styles.saveButton}
-  activeOpacity={0.85}
-  onPress={handleSaveRoute}
-  disabled={saving || !userId}
->
-  <Ionicons
-    name={savedRouteId ? 'bookmark' : 'bookmark-outline'}
-    size={20}
-    color="#FFFFFF"
-  />
+          style={styles.saveButton}
+          activeOpacity={0.85}
+          onPress={handleSaveRoute}
+          disabled={saving || !userId}
+        >
+          <Ionicons
+            name={
+              savedRouteId
+                ? 'bookmark'
+                : 'bookmark-outline'
+            }
+            size={20}
+            color="#FFFFFF"
+          />
 
-  <Text style={styles.saveButtonText}>
-    {saving
-      ? 'Please wait...'
-      : savedRouteId
-        ? 'Remove Saved Route'
-        : 'Save Route'}
-  </Text>
-</TouchableOpacity>
+          <Text style={styles.saveButtonText}>
+            {saving
+              ? 'Please wait...'
+              : savedRouteId
+                ? 'Remove Saved Route'
+                : 'Save Route'}
+          </Text>
+        </TouchableOpacity>
 
         <Text style={styles.disclaimer}>
-          Arrival times and route information may change due to traffic and
-          service conditions.
+          Arrival times and route information may change
+          due to traffic and service conditions. Crowding
+          levels are based on passenger-submitted reports.
         </Text>
       </ScrollView>
     </SafeAreaView>
@@ -394,7 +599,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#F7F8FA',
   },
-
   header: {
     backgroundColor: '#FFFFFF',
     paddingHorizontal: 18,
@@ -404,7 +608,6 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#E5E7EB',
   },
-
   backButton: {
     width: 42,
     height: 42,
@@ -413,36 +616,30 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-
   headerText: {
     flex: 1,
     marginLeft: 13,
   },
-
   headerTitle: {
     fontSize: 18,
     fontWeight: '800',
     color: '#111827',
   },
-
   headerSubtitle: {
     fontSize: 12,
     color: '#6B7280',
     marginTop: 2,
   },
-
   moreButton: {
     width: 40,
     height: 40,
     justifyContent: 'center',
     alignItems: 'center',
   },
-
   content: {
     padding: 20,
     paddingBottom: 45,
   },
-
   routeCard: {
     backgroundColor: '#FFFFFF',
     borderRadius: 20,
@@ -451,28 +648,24 @@ const styles = StyleSheet.create({
     borderColor: '#E5E7EB',
     marginBottom: 15,
   },
-
   routeTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 22,
   },
-
   routeLabel: {
     fontSize: 11,
     fontWeight: '800',
     color: '#6B7280',
     letterSpacing: 0.7,
   },
-
   routeNumber: {
     fontSize: 34,
     fontWeight: '800',
     color: '#111827',
     marginTop: 2,
   },
-
   busIcon: {
     width: 56,
     height: 56,
@@ -481,12 +674,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-
   locationRow: {
     flexDirection: 'row',
     alignItems: 'center',
   },
-
   locationDot: {
     width: 13,
     height: 13,
@@ -494,7 +685,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#2563EB',
     marginRight: 13,
   },
-
   destinationDot: {
     width: 13,
     height: 13,
@@ -502,36 +692,30 @@ const styles = StyleSheet.create({
     backgroundColor: '#16A34A',
     marginRight: 13,
   },
-
   locationLine: {
     width: 2,
     height: 25,
     backgroundColor: '#D1D5DB',
     marginLeft: 5.5,
   },
-
   locationTextContainer: {
     flex: 1,
   },
-
   locationLabel: {
     fontSize: 11,
     color: '#6B7280',
   },
-
   locationName: {
     fontSize: 16,
     fontWeight: '700',
     color: '#111827',
     marginTop: 1,
   },
-
   quickInfoRow: {
     flexDirection: 'row',
     gap: 12,
     marginBottom: 25,
   },
-
   quickInfoCard: {
     flex: 1,
     backgroundColor: '#FFFFFF',
@@ -540,7 +724,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#E5E7EB',
   },
-
   quickIconBlue: {
     width: 38,
     height: 38,
@@ -550,7 +733,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 10,
   },
-
   quickIconOrange: {
     width: 38,
     height: 38,
@@ -560,33 +742,28 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 10,
   },
-
   quickLabel: {
     fontSize: 11,
     color: '#6B7280',
   },
-
   quickValue: {
     fontSize: 17,
     fontWeight: '800',
     color: '#111827',
     marginTop: 2,
   },
-
   crowdingValue: {
     fontSize: 17,
     fontWeight: '800',
     color: '#D97706',
     marginTop: 2,
   },
-
   sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 12,
   },
-
   sectionTitle: {
     fontSize: 11,
     fontWeight: '800',
@@ -594,7 +771,6 @@ const styles = StyleSheet.create({
     letterSpacing: 0.8,
     marginBottom: 12,
   },
-
   liveBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -604,7 +780,6 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     marginBottom: 12,
   },
-
   liveDot: {
     width: 6,
     height: 6,
@@ -612,13 +787,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#16A34A',
     marginRight: 5,
   },
-
   liveText: {
     fontSize: 10,
     fontWeight: '800',
     color: '#16A34A',
   },
-
   timelineCard: {
     backgroundColor: '#FFFFFF',
     borderRadius: 18,
@@ -627,17 +800,14 @@ const styles = StyleSheet.create({
     borderColor: '#E5E7EB',
     marginBottom: 25,
   },
-
   stopRow: {
     flexDirection: 'row',
     minHeight: 72,
   },
-
   timelineColumn: {
     width: 26,
     alignItems: 'center',
   },
-
   stopCircle: {
     width: 15,
     height: 15,
@@ -648,12 +818,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-
   completedCircle: {
     backgroundColor: '#2563EB',
     borderColor: '#2563EB',
   },
-
   currentCircle: {
     width: 19,
     height: 19,
@@ -661,56 +829,46 @@ const styles = StyleSheet.create({
     borderColor: '#2563EB',
     backgroundColor: '#DBEAFE',
   },
-
   currentInnerDot: {
     width: 7,
     height: 7,
     borderRadius: 4,
     backgroundColor: '#2563EB',
   },
-
   timelineLine: {
     width: 2,
     flex: 1,
     backgroundColor: '#D1D5DB',
     marginVertical: 3,
   },
-
   completedLine: {
     backgroundColor: '#2563EB',
   },
-
   stopInformation: {
     flex: 1,
     paddingLeft: 10,
     paddingBottom: 18,
   },
-
   stopTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
   },
-
   stopName: {
     fontSize: 14,
     fontWeight: '700',
     color: '#374151',
   },
-
   currentStopName: {
     color: '#2563EB',
   },
-
   stopTime: {
     fontSize: 12,
     color: '#6B7280',
   },
-
   currentStopTime: {
     color: '#2563EB',
     fontWeight: '700',
   },
-
   currentBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -721,14 +879,12 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     marginTop: 7,
   },
-
   currentBadgeText: {
     fontSize: 10,
     color: '#2563EB',
     fontWeight: '600',
     marginLeft: 5,
   },
-
   serviceCard: {
     backgroundColor: '#FFFFFF',
     borderRadius: 18,
@@ -737,12 +893,10 @@ const styles = StyleSheet.create({
     borderColor: '#E5E7EB',
     marginBottom: 16,
   },
-
   serviceRow: {
     flexDirection: 'row',
     alignItems: 'center',
   },
-
   serviceIcon: {
     width: 40,
     height: 40,
@@ -752,42 +906,35 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginRight: 11,
   },
-
   serviceText: {
     flex: 1,
   },
-
   serviceLabel: {
     fontSize: 11,
     color: '#6B7280',
   },
-
   serviceValue: {
     fontSize: 14,
     fontWeight: '700',
     color: '#111827',
     marginTop: 2,
   },
-
   delayBadge: {
     backgroundColor: '#FEE2E2',
     paddingHorizontal: 9,
     paddingVertical: 5,
     borderRadius: 20,
   },
-
   delayBadgeText: {
     color: '#DC2626',
     fontSize: 11,
     fontWeight: '800',
   },
-
   divider: {
     height: 1,
     backgroundColor: '#E5E7EB',
     marginVertical: 14,
   },
-
   saveButton: {
     height: 55,
     borderRadius: 17,
@@ -796,14 +943,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-
   saveButtonText: {
     color: '#FFFFFF',
     fontSize: 15,
     fontWeight: '800',
     marginLeft: 8,
   },
-
   disclaimer: {
     fontSize: 11,
     lineHeight: 16,
