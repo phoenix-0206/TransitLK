@@ -1,8 +1,10 @@
+
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   SafeAreaView,
   ScrollView,
   StyleSheet,
@@ -13,9 +15,19 @@ import {
 
 import { supabase } from '../../services/supabase';
 
-type AlertType = 'delay' | 'diversion' | 'arrival' | 'cancellation';
+type AlertType =
+  | 'delay'
+  | 'diversion'
+  | 'arrival'
+  | 'cancellation';
 
-type Alert = {
+type FilterType =
+  | 'all'
+  | 'delay'
+  | 'diversion'
+  | 'alerts';
+
+type TransitAlert = {
   id: string;
   title: string;
   message: string;
@@ -30,9 +42,15 @@ type Alert = {
 export default function NotificationsScreen() {
   const router = useRouter();
 
-  const [alerts, setAlerts] = useState<Alert[]>([]);
+  const [alerts, setAlerts] = useState<TransitAlert[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState('');
+  const [selectedFilter, setSelectedFilter] =
+    useState<FilterType>('all');
+
+  // Tracks alerts dismissed during this screen session.
+  const [deletedAlertIds, setDeletedAlertIds] =
+    useState<string[]>([]);
 
   useEffect(() => {
     fetchNotifications();
@@ -42,8 +60,6 @@ export default function NotificationsScreen() {
     try {
       setLoading(true);
       setErrorMessage('');
-
-
 
       const { data, error } = await supabase
         .from('notifications')
@@ -57,7 +73,7 @@ export default function NotificationsScreen() {
         throw error;
       }
 
-      setAlerts((data ?? []) as Alert[]);
+      setAlerts((data ?? []) as TransitAlert[]);
     } catch (error) {
       console.error('Error loading notifications:', error);
 
@@ -67,6 +83,32 @@ export default function NotificationsScreen() {
     } finally {
       setLoading(false);
     }
+  };
+
+  // NEW: Delete confirmation dialog.
+  const handleDeleteAlert = (alertId: string) => {
+    Alert.alert(
+      'Delete Alert?',
+      'Are you sure you want to remove this alert from your list?',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            setDeletedAlertIds((previousIds) =>
+              previousIds.includes(alertId)
+                ? previousIds
+                : [...previousIds, alertId]
+            );
+          },
+        },
+      ],
+      { cancelable: true }
+    );
   };
 
   const getAlertStyle = (type: AlertType) => {
@@ -108,7 +150,7 @@ export default function NotificationsScreen() {
     }
   };
 
-  const getBusLabel = (alert: Alert) => {
+  const getBusLabel = (alert: TransitAlert) => {
     if (!alert.route_number) {
       return 'TRANSIT ALERT';
     }
@@ -120,7 +162,7 @@ export default function NotificationsScreen() {
     return `BUS ${alert.route_number}`;
   };
 
-  const getBadge = (alert: Alert) => {
+  const getBadge = (alert: TransitAlert) => {
     switch (alert.type) {
       case 'delay':
         return alert.delay_minutes
@@ -131,7 +173,7 @@ export default function NotificationsScreen() {
         return 'Diversion';
 
       case 'arrival':
-        return '3 min';
+        return 'Arrival';
 
       case 'cancellation':
         return 'Cancelled';
@@ -143,11 +185,13 @@ export default function NotificationsScreen() {
 
   const getTimeAgo = (createdAt: string) => {
     const createdTime = new Date(createdAt).getTime();
-    const currentTime = new Date().getTime();
+    const currentTime = Date.now();
 
     const differenceInMinutes = Math.max(
       0,
-      Math.floor((currentTime - createdTime) / 60000)
+      Math.floor(
+        (currentTime - createdTime) / 60000
+      )
     );
 
     if (differenceInMinutes < 1) {
@@ -158,7 +202,9 @@ export default function NotificationsScreen() {
       return `${differenceInMinutes} min ago`;
     }
 
-    const hours = Math.floor(differenceInMinutes / 60);
+    const hours = Math.floor(
+      differenceInMinutes / 60
+    );
 
     if (hours < 24) {
       return `${hours} hr${hours > 1 ? 's' : ''} ago`;
@@ -169,15 +215,76 @@ export default function NotificationsScreen() {
     return `${days} day${days > 1 ? 's' : ''} ago`;
   };
 
-  const activeDelayCount = alerts.filter(
-    (alert) => alert.type === 'delay' && alert.is_active
+  // Only display alerts that haven't been dismissed.
+  const visibleAlerts = alerts.filter(
+    (alert) => !deletedAlertIds.includes(alert.id)
+  );
+
+  const activeDelayCount = visibleAlerts.filter(
+    (alert) =>
+      alert.type === 'delay' && alert.is_active
   ).length;
+
+  const filters: {
+    key: FilterType;
+    label: string;
+    count: number;
+  }[] = [
+    {
+      key: 'all',
+      label: 'All',
+      count: visibleAlerts.length,
+    },
+    {
+      key: 'delay',
+      label: 'Delays',
+      count: visibleAlerts.filter(
+        (alert) => alert.type === 'delay'
+      ).length,
+    },
+    {
+      key: 'diversion',
+      label: 'Route Changes',
+      count: visibleAlerts.filter(
+        (alert) => alert.type === 'diversion'
+      ).length,
+    },
+    {
+      key: 'alerts',
+      label: 'Alerts',
+      count: visibleAlerts.filter(
+        (alert) =>
+          alert.type === 'arrival' ||
+          alert.type === 'cancellation'
+      ).length,
+    },
+  ];
+
+  const filteredAlerts = visibleAlerts.filter(
+    (alert) => {
+      if (selectedFilter === 'all') {
+        return true;
+      }
+
+      if (selectedFilter === 'alerts') {
+        return (
+          alert.type === 'arrival' ||
+          alert.type === 'cancellation'
+        );
+      }
+
+      return alert.type === selectedFilter;
+    }
+  );
 
   return (
     <SafeAreaView style={styles.container}>
+      {/* Header */}
       <View style={styles.header}>
         <View>
-          <Text style={styles.headerTitle}>Alerts Feed</Text>
+          <Text style={styles.headerTitle}>
+            Alerts Feed
+          </Text>
 
           <Text style={styles.headerSubtitle}>
             Live transit updates
@@ -185,15 +292,18 @@ export default function NotificationsScreen() {
         </View>
 
         <TouchableOpacity
-            style={styles.headerButton}
-            onPress={() => router.push('/settings-preferences')}
+          style={styles.headerButton}
+          onPress={() =>
+            router.push('/settings-preferences')
+          }
+          accessibilityLabel="Open settings"
         >
-           <Ionicons
-              name="settings-outline"
-              size={22}
-              color="#1F2937"
-            />
-      </TouchableOpacity>      
+          <Ionicons
+            name="settings-outline"
+            size={22}
+            color="#1F2937"
+          />
+        </TouchableOpacity>
       </View>
 
       <ScrollView
@@ -201,6 +311,70 @@ export default function NotificationsScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
+        {/* Horizontal filter tabs */}
+        <ScrollView
+          horizontal
+          nestedScrollEnabled
+          showsHorizontalScrollIndicator={false}
+          style={styles.filterScroll}
+          contentContainerStyle={
+            styles.filterContainer
+          }
+        >
+          {filters.map((filter) => {
+            const isSelected =
+              selectedFilter === filter.key;
+
+            return (
+              <TouchableOpacity
+                key={filter.key}
+                activeOpacity={0.8}
+                accessibilityRole="button"
+                accessibilityState={{
+                  selected: isSelected,
+                }}
+                style={[
+                  styles.filterTab,
+                  isSelected &&
+                    styles.filterTabSelected,
+                ]}
+                onPress={() =>
+                  setSelectedFilter(filter.key)
+                }
+              >
+                <Text
+                  style={[
+                    styles.filterLabel,
+                    isSelected &&
+                      styles.filterLabelSelected,
+                  ]}
+                >
+                  {filter.label}
+                </Text>
+
+                <View
+                  style={[
+                    styles.filterCount,
+                    isSelected &&
+                      styles.filterCountSelected,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.filterCountText,
+                      isSelected &&
+                        styles.filterCountTextSelected,
+                    ]}
+                  >
+                    {filter.count}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+
+        {/* Active delay summary */}
         <View style={styles.summaryCard}>
           <View style={styles.summaryIcon}>
             <Ionicons
@@ -210,10 +384,12 @@ export default function NotificationsScreen() {
             />
           </View>
 
-          <View>
+          <View style={styles.summaryInfo}>
             <Text style={styles.summaryNumber}>
               {activeDelayCount} Active Transit{' '}
-              {activeDelayCount === 1 ? 'Delay' : 'Delays'}
+              {activeDelayCount === 1
+                ? 'Delay'
+                : 'Delays'}
             </Text>
 
             <Text style={styles.summaryText}>
@@ -222,11 +398,17 @@ export default function NotificationsScreen() {
           </View>
         </View>
 
-        <Text style={styles.sectionTitle}>LATEST ALERTS</Text>
+        <Text style={styles.sectionTitle}>
+          LATEST ALERTS
+        </Text>
 
+        {/* Loading */}
         {loading && (
           <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color="#2563EB" />
+            <ActivityIndicator
+              size="large"
+              color="#2563EB"
+            />
 
             <Text style={styles.loadingText}>
               Loading transit alerts...
@@ -234,6 +416,7 @@ export default function NotificationsScreen() {
           </View>
         )}
 
+        {/* Error */}
         {!loading && errorMessage !== '' && (
           <View style={styles.errorCard}>
             <Ionicons
@@ -257,36 +440,36 @@ export default function NotificationsScreen() {
           </View>
         )}
 
+        {/* Notification cards */}
         {!loading &&
           errorMessage === '' &&
-          alerts.map((alert) => {
-            const appearance = getAlertStyle(alert.type);
+          filteredAlerts.map((alert) => {
+            const appearance = getAlertStyle(
+              alert.type
+            );
 
             return (
-              <TouchableOpacity
+              <View
                 key={alert.id}
-                activeOpacity={0.8}
                 style={[
                   styles.alertCard,
                   {
-                    backgroundColor: appearance.background,
-                    borderLeftColor: appearance.color,
+                    backgroundColor:
+                      appearance.background,
+                    borderLeftColor:
+                      appearance.color,
                   },
                 ]}
-                onPress={() =>
-                  router.push({
-                    pathname: '/notifications/[id]',
-                    params: { id: alert.id },
-                  })
-                }
               >
+                {/* Card top row */}
                 <View style={styles.cardTopRow}>
                   <View style={styles.busInfo}>
                     <View
                       style={[
                         styles.iconBox,
                         {
-                          backgroundColor: `${appearance.color}15`,
+                          backgroundColor:
+                            `${appearance.color}15`,
                         },
                       ]}
                     >
@@ -306,7 +489,8 @@ export default function NotificationsScreen() {
                     style={[
                       styles.badge,
                       {
-                        backgroundColor: appearance.color,
+                        backgroundColor:
+                          appearance.color,
                       },
                     ]}
                   >
@@ -316,14 +500,29 @@ export default function NotificationsScreen() {
                   </View>
                 </View>
 
-                <Text style={styles.alertTitle}>
-                  {alert.title}
-                </Text>
+                {/* Tapping notification content opens details */}
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  onPress={() =>
+                    router.push({
+                      pathname:
+                        '/notifications/[id]',
+                      params: {
+                        id: alert.id,
+                      },
+                    })
+                  }
+                >
+                  <Text style={styles.alertTitle}>
+                    {alert.title}
+                  </Text>
 
-                <Text style={styles.alertMessage}>
-                  {alert.message}
-                </Text>
+                  <Text style={styles.alertMessage}>
+                    {alert.message}
+                  </Text>
+                </TouchableOpacity>
 
+                {/* Bottom row */}
                 <View style={styles.cardBottom}>
                   <View style={styles.timeContainer}>
                     <Ionicons
@@ -333,23 +532,65 @@ export default function NotificationsScreen() {
                     />
 
                     <Text style={styles.timeText}>
-                      {getTimeAgo(alert.created_at)}
+                      {getTimeAgo(
+                        alert.created_at
+                      )}
                     </Text>
                   </View>
 
-                  <Ionicons
-                    name="chevron-forward"
-                    size={19}
-                    color="#6B7280"
-                  />
+                  <View style={styles.cardActions}>
+                    {/* NEW: Delete icon */}
+                    <TouchableOpacity
+                      style={styles.deleteButton}
+                      onPress={() =>
+                        handleDeleteAlert(alert.id)
+                      }
+                      accessibilityRole="button"
+                      accessibilityLabel={
+                        `Delete ${alert.title}`
+                      }
+                      hitSlop={8}
+                    >
+                      <Ionicons
+                        name="trash-outline"
+                        size={20}
+                        color="#DC2626"
+                      />
+                    </TouchableOpacity>
+
+                    {/* Existing details navigation */}
+                    <TouchableOpacity
+                      onPress={() =>
+                        router.push({
+                          pathname:
+                            '/notifications/[id]',
+                          params: {
+                            id: alert.id,
+                          },
+                        })
+                      }
+                      accessibilityRole="button"
+                      accessibilityLabel={
+                        `View ${alert.title} details`
+                      }
+                      hitSlop={8}
+                    >
+                      <Ionicons
+                        name="chevron-forward"
+                        size={19}
+                        color="#6B7280"
+                      />
+                    </TouchableOpacity>
+                  </View>
                 </View>
-              </TouchableOpacity>
+              </View>
             );
           })}
 
+        {/* Empty state */}
         {!loading &&
           errorMessage === '' &&
-          alerts.length === 0 && (
+          filteredAlerts.length === 0 && (
             <View style={styles.emptyContainer}>
               <Ionicons
                 name="notifications-off-outline"
@@ -358,14 +599,17 @@ export default function NotificationsScreen() {
               />
 
               <Text style={styles.emptyText}>
-                No active transit alerts
+                {selectedFilter === 'all'
+                  ? 'No active transit alerts'
+                  : 'No notifications in this category'}
               </Text>
             </View>
           )}
 
+        {/* End message */}
         {!loading &&
           errorMessage === '' &&
-          alerts.length > 0 && (
+          filteredAlerts.length > 0 && (
             <View style={styles.endMessage}>
               <Ionicons
                 name="checkmark-circle-outline"
@@ -431,6 +675,69 @@ const styles = StyleSheet.create({
     paddingBottom: 40,
   },
 
+  filterScroll: {
+    marginBottom: 20,
+    flexGrow: 0,
+  },
+
+  filterContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingRight: 10,
+    gap: 10,
+  },
+
+  filterTab: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 15,
+    paddingVertical: 11,
+    borderRadius: 25,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+
+  filterTabSelected: {
+    backgroundColor: '#173A87',
+    borderColor: '#173A87',
+  },
+
+  filterLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#1F2937',
+  },
+
+  filterLabelSelected: {
+    color: '#FFFFFF',
+  },
+
+  filterCount: {
+    marginLeft: 8,
+    minWidth: 23,
+    height: 23,
+    paddingHorizontal: 5,
+    borderRadius: 12,
+    backgroundColor: '#EEF2FF',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
+  filterCountSelected: {
+    backgroundColor: '#385BA4',
+  },
+
+  filterCountText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#173A87',
+  },
+
+  filterCountTextSelected: {
+    color: '#FFFFFF',
+  },
+
   summaryCard: {
     backgroundColor: '#FFFFFF',
     borderRadius: 18,
@@ -450,6 +757,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 13,
+  },
+
+  summaryInfo: {
+    flex: 1,
   },
 
   summaryNumber: {
@@ -477,7 +788,6 @@ const styles = StyleSheet.create({
     padding: 16,
     marginBottom: 14,
     borderLeftWidth: 4,
-
     shadowColor: '#000',
     shadowOpacity: 0.04,
     shadowRadius: 6,
@@ -485,7 +795,6 @@ const styles = StyleSheet.create({
       width: 0,
       height: 2,
     },
-
     elevation: 2,
   },
 
@@ -499,6 +808,7 @@ const styles = StyleSheet.create({
   busInfo: {
     flexDirection: 'row',
     alignItems: 'center',
+    flexShrink: 1,
   },
 
   iconBox: {
@@ -561,6 +871,23 @@ const styles = StyleSheet.create({
     marginLeft: 5,
     fontSize: 12,
     color: '#6B7280',
+  },
+
+  // NEW: Delete and details action row
+  cardActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+
+  // NEW: Trash icon button
+  deleteButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: '#FEE2E2',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 
   endMessage: {
@@ -629,5 +956,6 @@ const styles = StyleSheet.create({
     marginTop: 10,
     color: '#6B7280',
     fontSize: 14,
+    textAlign: 'center',
   },
 });

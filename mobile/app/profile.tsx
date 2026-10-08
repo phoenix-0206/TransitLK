@@ -295,8 +295,8 @@ export default function ProfileScreen() {
             subtitle="View ticket payments and top-up records"
             onPress={() => router.push('/passenger/purchase-history' as any)}
           />
-          <MenuItem icon="notifications-outline" title="Notifications" subtitle="Live bus alerts and service updates" onPress={() => showComingSoon('Notifications', 'Notification preferences will be available here soon.')} />
-          <MenuItem icon="language-outline" title="Language" subtitle="English • සිංහල available soon" onPress={() => showComingSoon('Language', 'Language selection will be available here soon.')} />
+          <MenuItem icon="notifications-outline"  title="Notifications"subtitle="Live bus alerts and service updates"onPress={() => router.push('/notifications')}/>
+          <MenuItem icon="language-outline" title="Language" subtitle="Language and app preferences" onPress={() => router.push('/settings-preferences')}/>
           <MenuItem icon="shield-checkmark-outline" title="Privacy & permissions" subtitle="Location and account access" onPress={() => showComingSoon('Privacy & permissions', 'Review location and account permissions in your device settings.')} />
           <MenuItem icon="help-circle-outline" title="Help & feedback" subtitle="Get support for your journey" onPress={() => showComingSoon('Help & feedback', 'TransitLK support tools will be available here soon.')} />
           <MenuItem icon="log-out-outline" title="Log out" subtitle="Sign out of this device" onPress={() => void handleLogout()} danger />
