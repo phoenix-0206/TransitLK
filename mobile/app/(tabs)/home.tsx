@@ -205,7 +205,7 @@ export default function HomeDashboardScreen() {
 
             <TouchableOpacity
               style={styles.iconCircle}
-              onPress={() => router.push('/modal')}
+              onPress={() => router.push('/notifications')}
             >
               <Ionicons
                 name="notifications-outline"

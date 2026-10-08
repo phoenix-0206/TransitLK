@@ -184,13 +184,16 @@ export default function NotificationsScreen() {
           </Text>
         </View>
 
-        <TouchableOpacity style={styles.headerButton}>
-          <Ionicons
-            name="options-outline"
-            size={22}
-            color="#1F2937"
-          />
-        </TouchableOpacity>
+        <TouchableOpacity
+            style={styles.headerButton}
+            onPress={() => router.push('/settings-preferences')}
+        >
+           <Ionicons
+              name="settings-outline"
+              size={22}
+              color="#1F2937"
+            />
+      </TouchableOpacity>      
       </View>
 
       <ScrollView
