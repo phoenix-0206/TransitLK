@@ -22,11 +22,61 @@ ALTER TABLE public.profiles
 
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 
+-- Public avatar bucket. Profile pictures are optional.
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('avatars', 'avatars', true)
+ON CONFLICT (id) DO UPDATE SET public = true;
+
+DROP POLICY IF EXISTS "Users can upload own avatar" ON storage.objects;
+CREATE POLICY "Users can upload own avatar"
+  ON storage.objects FOR INSERT TO authenticated
+  WITH CHECK (bucket_id = 'avatars' AND (storage.foldername(name))[1] = auth.uid()::text);
+
+DROP POLICY IF EXISTS "Users can update own avatar" ON storage.objects;
+CREATE POLICY "Users can update own avatar"
+  ON storage.objects FOR UPDATE TO authenticated
+  USING (bucket_id = 'avatars' AND (storage.foldername(name))[1] = auth.uid()::text)
+  WITH CHECK (bucket_id = 'avatars' AND (storage.foldername(name))[1] = auth.uid()::text);
+
+DROP POLICY IF EXISTS "Users can delete own avatar" ON storage.objects;
+CREATE POLICY "Users can delete own avatar"
+  ON storage.objects FOR DELETE TO authenticated
+  USING (bucket_id = 'avatars' AND (storage.foldername(name))[1] = auth.uid()::text);
+
+DROP POLICY IF EXISTS "Anyone can view avatars" ON storage.objects;
+CREATE POLICY "Anyone can view avatars"
+  ON storage.objects FOR SELECT
+  USING (bucket_id = 'avatars');
+
+-- Use a SECURITY DEFINER helper so the admin profile policy does not recurse
+-- through the profiles table while checking the current user's role.
+CREATE OR REPLACE FUNCTION public.is_admin()
+RETURNS BOOLEAN
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT EXISTS (
+    SELECT 1
+    FROM public.profiles
+    WHERE id = auth.uid()
+      AND role = 'admin'
+  );
+$$;
+REVOKE ALL ON FUNCTION public.is_admin() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.is_admin() TO authenticated;
+
 -- Users can read their own profile
 DROP POLICY IF EXISTS "Users can view own profile" ON public.profiles;
 CREATE POLICY "Users can view own profile"
   ON public.profiles FOR SELECT
   USING (auth.uid() = id);
+
+DROP POLICY IF EXISTS "Admins can view all profiles" ON public.profiles;
+CREATE POLICY "Admins can view all profiles"
+  ON public.profiles FOR SELECT TO authenticated
+  USING (public.is_admin());
 
 -- Users can insert their own profile
 DROP POLICY IF EXISTS "Users can insert own profile" ON public.profiles;
@@ -39,6 +89,17 @@ DROP POLICY IF EXISTS "Users can update own profile" ON public.profiles;
 CREATE POLICY "Users can update own profile"
   ON public.profiles FOR UPDATE
   USING (auth.uid() = id);
+
+DROP POLICY IF EXISTS "Admins can manage all profiles" ON public.profiles;
+CREATE POLICY "Admins can manage all profiles"
+  ON public.profiles FOR UPDATE TO authenticated
+  USING (public.is_admin())
+  WITH CHECK (public.is_admin());
+
+DROP POLICY IF EXISTS "Admins can delete profiles" ON public.profiles;
+CREATE POLICY "Admins can delete profiles"
+  ON public.profiles FOR DELETE TO authenticated
+  USING (public.is_admin());
 
 -- Auto-create profile on signup via trigger
 CREATE OR REPLACE FUNCTION public.handle_new_user()
@@ -147,6 +208,12 @@ CREATE TABLE IF NOT EXISTS public.saved_routes (
   -- Prevent duplicate bookmarks per user
   UNIQUE(user_id, route_number)
 );
+
+-- Older installations may have required origin and destination. These values
+-- are optional when a live bus has no matching timetable row.
+ALTER TABLE public.saved_routes
+  ALTER COLUMN origin DROP NOT NULL,
+  ALTER COLUMN destination DROP NOT NULL;
 
 ALTER TABLE public.saved_routes ENABLE ROW LEVEL SECURITY;
 

@@ -8,7 +8,10 @@
     "scheme": "mobile",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSFaceIDUsageDescription": "Use Face ID to securely unlock your TransitLK account."
+      }
     },
     "android": {
       "adaptiveIcon": {

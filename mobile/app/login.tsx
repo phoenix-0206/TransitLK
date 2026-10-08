@@ -1,9 +1,14 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, FontAwesome, MaterialIcons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
+import * as LocalAuthentication from 'expo-local-authentication';
+import * as SecureStore from 'expo-secure-store';
 import { supabase } from '../services/supabase';
+
+const BIOMETRIC_LOGIN_KEY = 'transitlk.biometric-login-enabled';
+const BIOMETRIC_CREDENTIALS_KEY = 'transitlk.biometric-credentials';
 
 export default function LoginScreen() {
   const { notice } = useLocalSearchParams<{ notice?: string }>();
@@ -14,6 +19,39 @@ export default function LoginScreen() {
   const [rememberMe, setRememberMe] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [biometricAvailable, setBiometricAvailable] = useState(false);
+  const [biometricEnabled, setBiometricEnabled] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadBiometricAvailability() {
+      const [hasHardware, isEnrolled, enabled] = await Promise.all([
+        LocalAuthentication.hasHardwareAsync(),
+        LocalAuthentication.isEnrolledAsync(),
+        SecureStore.getItemAsync(BIOMETRIC_LOGIN_KEY),
+      ]);
+
+      if (mounted) {
+        setBiometricAvailable(hasHardware && isEnrolled);
+        setBiometricEnabled(enabled === 'true');
+        if (hasHardware && isEnrolled && enabled === 'true') {
+          void handleBiometricLogin();
+        }
+      }
+    }
+
+    loadBiometricAvailability().catch(() => {
+      if (mounted) {
+        setBiometricAvailable(false);
+        setBiometricEnabled(false);
+      }
+    });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   function normalizePhoneNumber(value: string) {
     const digits = value.replace(/\D/g, '');
@@ -42,7 +80,15 @@ export default function LoginScreen() {
         const credentials = { email: value.toLowerCase(), password };
         const { data, error } = await supabase.auth.signInWithPassword(credentials);
         if (error) throw error;
-        router.replace(data.session?.user.user_metadata?.pass_setup_pending ? '/pass-activation' : '/(tabs)');
+        if (rememberMe && biometricAvailable) {
+          await SecureStore.setItemAsync(BIOMETRIC_LOGIN_KEY, 'true');
+          await SecureStore.setItemAsync(
+            BIOMETRIC_CREDENTIALS_KEY,
+            JSON.stringify({ email: credentials.email, password }),
+          );
+          setBiometricEnabled(true);
+        }
+        router.replace(data.session?.user.user_metadata?.pass_setup_pending ? '/pass-activation' : '/home');
       } else {
         const phone = normalizePhoneNumber(value);
         const { error } = await supabase.auth.signInWithOtp({ phone, options: { shouldCreateUser: false } });
@@ -51,6 +97,49 @@ export default function LoginScreen() {
       }
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Unable to sign in. Please try again.');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleBiometricLogin() {
+    setSubmitting(true);
+    setErrorMessage('');
+
+    try {
+      const result = await LocalAuthentication.authenticateAsync({
+        promptMessage: 'Unlock TransitLK',
+        fallbackLabel: 'Use password',
+        disableDeviceFallback: false,
+      });
+
+      if (!result.success) {
+        if (result.error !== 'user_cancel' && result.error !== 'system_cancel') {
+          setErrorMessage('Fingerprint verification was not completed. You can use password or OTP login instead.');
+        }
+        return;
+      }
+
+      const storedCredentials = await SecureStore.getItemAsync(BIOMETRIC_CREDENTIALS_KEY);
+      if (storedCredentials) {
+        const credentials = JSON.parse(storedCredentials) as { email?: string; password?: string };
+        if (credentials.email && credentials.password) {
+          const { data, error } = await supabase.auth.signInWithPassword({
+            email: credentials.email,
+            password: credentials.password,
+          });
+          if (error) throw error;
+          router.replace(data.session?.user.user_metadata?.pass_setup_pending ? '/pass-activation' : '/home');
+          return;
+        }
+      }
+
+      setErrorMessage('No saved biometric login was found. Please sign in with your password and enable Remember me.');
+    } catch (error) {
+      await SecureStore.deleteItemAsync(BIOMETRIC_CREDENTIALS_KEY);
+      await SecureStore.deleteItemAsync(BIOMETRIC_LOGIN_KEY);
+      setBiometricEnabled(false);
+      setErrorMessage(error instanceof Error ? error.message : 'Biometric login is unavailable. Please use password or OTP login.');
     } finally {
       setSubmitting(false);
     }
@@ -172,6 +261,13 @@ export default function LoginScreen() {
           {!submitting && <Ionicons name="arrow-forward" size={18} color="#FFF" />}
         </TouchableOpacity>
 
+        {biometricAvailable && biometricEnabled && (
+          <TouchableOpacity style={styles.biometricBtn} onPress={handleBiometricLogin} disabled={submitting}>
+            <Ionicons name="finger-print-outline" size={24} color="#0F766E" />
+            <Text style={styles.biometricBtnText}>Log in with fingerprint</Text>
+          </TouchableOpacity>
+        )}
+
         {/* OTP Option Promo Box */}
         <View style={styles.otpPromoCard}>
           <View style={styles.otpIconCircle}>
@@ -197,7 +293,7 @@ export default function LoginScreen() {
           <Text style={styles.googleBtnText}>Continue with Google</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.guestBtn} onPress={() => router.replace('/(tabs)')}>
+        <TouchableOpacity style={styles.guestBtn} onPress={() => router.replace('/home')}>
           <Ionicons name="compass-outline" size={18} color="#002060" />
           <Text style={styles.guestBtnText}>Explore as Guest</Text>
         </TouchableOpacity>
@@ -259,6 +355,8 @@ const styles = StyleSheet.create({
   forgotText: { fontSize: 13, fontWeight: 'bold', color: '#002060' },
   primaryBtn: { backgroundColor: '#002060', height: 50, borderRadius: 10, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 8 },
   primaryBtnText: { color: '#FFF', fontWeight: 'bold', fontSize: 16 },
+  biometricBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, height: 48, borderRadius: 10, borderWidth: 1, borderColor: '#99F6E4', backgroundColor: '#F0FDFA', marginTop: 10 },
+  biometricBtnText: { color: '#0F766E', fontWeight: 'bold', fontSize: 14 },
   errorText: { color: '#B91C1C', fontSize: 12, marginTop: 8, marginBottom: 4 },
   noticeText: { color: '#0F766E', fontSize: 12, marginTop: 8, marginBottom: 4 },
   otpPromoCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#CCFBF1', borderRadius: 10, padding: 12, marginTop: 14 },

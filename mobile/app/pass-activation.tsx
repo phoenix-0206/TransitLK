@@ -36,7 +36,7 @@ export default function PassActivationScreen() {
       setErrorMessage(error.message);
       return;
     }
-    router.replace('/(tabs)');
+    router.replace('/home');
   }
 
   return (

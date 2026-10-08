@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, Image } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, Image, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, FontAwesome, MaterialIcons } from '@expo/vector-icons';
 import { router } from 'expo-router';
+import * as ImagePicker from 'expo-image-picker';
 import { supabase } from '../services/supabase';
 
 export default function SignUpScreen() {
@@ -16,6 +17,42 @@ export default function SignUpScreen() {
   const [receiveAlerts, setReceiveAlerts] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [profileImage, setProfileImage] = useState<string | null>(null);
+
+  async function chooseProfileImage() {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert('Photo permission needed', 'You can skip this step, or allow photo access to choose a profile picture.');
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+    });
+    if (!result.canceled) setProfileImage(result.assets[0].uri);
+  }
+
+  async function uploadProfileImage(userId: string, uri: string) {
+    const response = await fetch(uri);
+    const blob = await response.blob();
+    const extension = uri.split('.').pop()?.split('?')[0]?.toLowerCase() || 'jpg';
+    const contentType = blob.type || `image/${extension === 'jpg' ? 'jpeg' : extension}`;
+    const path = `${userId}/avatar.${extension}`;
+    const { error: uploadError } = await supabase.storage
+      .from('avatars')
+      .upload(path, blob, { contentType, upsert: true });
+    if (uploadError) throw uploadError;
+
+    const { data } = supabase.storage.from('avatars').getPublicUrl(path);
+    const { error: profileError } = await supabase
+      .from('profiles')
+      .update({ avatar_url: data.publicUrl })
+      .eq('id', userId);
+    if (profileError) throw profileError;
+  }
 
   async function handleCreateAccount() {
     if (!fullName.trim() || !mobileNumber.trim() || !email.trim() || !password) {
@@ -64,6 +101,7 @@ export default function SignUpScreen() {
           .update({ phone_number: mobileNumber.trim() })
           .eq('id', data.user.id);
         if (profileError) throw profileError;
+        if (profileImage) await uploadProfileImage(data.user.id, profileImage);
       } else {
         router.replace({
           pathname: '/login',
@@ -143,6 +181,20 @@ export default function SignUpScreen() {
         </View>
 
         {/* Form Fields */}
+        <Text style={styles.inputLabel}>🖼️ Profile Picture <Text style={styles.optionalTag}>Optional</Text></Text>
+        <TouchableOpacity style={styles.photoPicker} onPress={() => void chooseProfileImage()}>
+          {profileImage ? (
+            <Image source={{ uri: profileImage }} style={styles.photoPreview} />
+          ) : (
+            <View style={styles.photoPlaceholder}>
+              <Ionicons name="camera-outline" size={25} color="#0D9488" />
+              <Text style={styles.photoText}>Upload a profile picture</Text>
+              <Text style={styles.photoHint}>You can skip this</Text>
+            </View>
+          )}
+          {profileImage && <Text style={styles.changePhotoText}>Tap to change photo</Text>}
+        </TouchableOpacity>
+
         <Text style={styles.inputLabel}>👤 Full Name</Text>
         <View style={styles.inputWrapper}>
           <TextInput
@@ -336,6 +388,12 @@ const styles = StyleSheet.create({
   promoTitle: { color: '#FFF', fontWeight: 'bold', fontSize: 15, marginVertical: 4 },
   promoSub: { color: '#94A3B8', fontSize: 11 },
   inputLabel: { fontSize: 13, fontWeight: '600', color: '#1E293B', marginBottom: 6, marginTop: 10 },
+  photoPicker: { minHeight: 105, borderWidth: 1, borderStyle: 'dashed', borderColor: '#99F6E4', borderRadius: 12, backgroundColor: '#F0FDFA', justifyContent: 'center', alignItems: 'center', marginBottom: 4, overflow: 'hidden' },
+  photoPlaceholder: { alignItems: 'center', gap: 3, paddingVertical: 14 },
+  photoPreview: { width: 86, height: 86, borderRadius: 43, marginVertical: 10 },
+  photoText: { color: '#0F766E', fontWeight: 'bold', fontSize: 13 },
+  photoHint: { color: '#64748B', fontSize: 11 },
+  changePhotoText: { color: '#0F766E', fontSize: 11, marginBottom: 8 },
   labelRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 10, marginBottom: 6 },
   smsPill: { backgroundColor: '#CCFBF1', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 },
   smsPillText: { fontSize: 10, fontWeight: 'bold', color: '#0D9488' },

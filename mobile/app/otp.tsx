@@ -148,7 +148,7 @@ export default function OtpScreen() {
             const { data, error } = await supabase.auth.verifyOtp({ phone, token, type: 'sms' });
             setSubmitting(false);
             if (error) setErrorMessage(error.message);
-            else router.replace(data.session?.user.user_metadata?.pass_setup_pending ? '/pass-activation' : '/(tabs)');
+            else router.replace(data.session?.user.user_metadata?.pass_setup_pending ? '/pass-activation' : '/home');
           }}
         >
           <Text style={styles.verifyBtnText}>{submitting ? 'Verifying...' : 'Verify & Continue'}</Text>
