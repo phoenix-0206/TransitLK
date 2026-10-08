@@ -1,17 +1,23 @@
+
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useRouter, useLocalSearchParams } from 'expo-router';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
+  RefreshControl,
   SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
-
 import { supabase } from '../services/supabase';
+
+type Level = 'Low' | 'Medium' | 'High';
+type Section = 'Front' | 'Middle' | 'Rear';
 
 type CrowdingReport = {
   id: string;
@@ -23,56 +29,293 @@ type CrowdingReport = {
   section: string | null;
 };
 
-type CrowdingLevel = 'Low' | 'Medium' | 'High';
+const NAVY = '#002060';
+const BLUE = '#2563EB';
+const SECTIONS: Section[] = ['Front', 'Middle', 'Rear'];
+const LEVELS: Level[] = ['Low', 'Medium', 'High'];
+
+const levelColors: Record<Level, {
+  color: string;
+  background: string;
+}> = {
+  Low: { color: '#15803D', background: '#DCFCE7' },
+  Medium: { color: '#B45309', background: '#FEF3C7' },
+  High: { color: '#B91C1C', background: '#FEE2E2' },
+};
+
+function normalizeLevel(value?: string | null): Level | null {
+  const level = value?.trim().toLowerCase();
+
+  if (level === 'low') return 'Low';
+  if (level === 'medium') return 'Medium';
+  if (level === 'high') return 'High';
+
+  return null;
+}
+
+function levelScore(level: Level): number {
+  return level === 'Low' ? 1 : level === 'Medium' ? 2 : 3;
+}
+
+function scoreLevel(score: number): Level {
+  if (score < 1.5) return 'Low';
+  if (score < 2.5) return 'Medium';
+  return 'High';
+}
+
+function timeAgo(date: string): string {
+  const difference = Math.max(
+    0,
+    Date.now() - new Date(date).getTime()
+  );
+
+  if (!Number.isFinite(difference)) return 'Unknown time';
+
+  const minutes = Math.floor(difference / 60000);
+
+  if (minutes < 1) return 'Just now';
+  if (minutes < 60) return `${minutes} min ago`;
+
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} hr ago`;
+
+  return `${Math.floor(hours / 24)} days ago`;
+}
+
+function LevelBadge({ level }: { level: Level | null }) {
+  const colors = level
+    ? levelColors[level]
+    : { color: '#64748B', background: '#E2E8F0' };
+
+  return (
+    <View style={[
+      styles.levelBadge,
+      { backgroundColor: colors.background },
+    ]}>
+      <View style={[
+        styles.badgeDot,
+        { backgroundColor: colors.color },
+      ]} />
+      <Text style={[styles.levelBadgeText, { color: colors.color }]}>
+        {level ?? 'No data'}
+      </Text>
+    </View>
+  );
+}
 
 export default function CrowdingScreen() {
   const router = useRouter();
+  const { routeNumber: requestedRoute } =
+  useLocalSearchParams<{ routeNumber?: string }>();
 
-  const [crowdingReports, setCrowdingReports] = useState<CrowdingReport[]>([]);
+const initialRoute =
+  typeof requestedRoute === 'string' && requestedRoute.trim()
+    ? requestedRoute.trim()
+    : '138';
+
+const [routeNumber, setRouteNumber] = useState(initialRoute);
+const [routeInput, setRouteInput] = useState(initialRoute);
+
+useEffect(() => {
+  if (
+    typeof requestedRoute === 'string' &&
+    requestedRoute.trim()
+  ) {
+    const nextRoute = requestedRoute.trim();
+    setRouteNumber(nextRoute);
+    setRouteInput(nextRoute);
+  }
+}, [requestedRoute]);
+
+  const [reports, setReports] = useState<CrowdingReport[]>([]);
   const [loading, setLoading] = useState(true);
-
-  // CREATE operation states
-  const [selectedLevel, setSelectedLevel] =
-    useState<CrowdingLevel | null>(null);
-
+  const [refreshing, setRefreshing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+
+  const [selectedSection, setSelectedSection] =
+    useState<Section>('Front');
+  const [selectedLevel, setSelectedLevel] =
+    useState<Level | null>(null);
+
+  const [passengerInput, setPassengerInput] = useState('');
+  const [capacityInput, setCapacityInput] = useState('50');
+  const [showForm, setShowForm] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
 
-  useEffect(() => {
-    fetchCrowdingReports();
-  }, []);
-
-  // READ operation
-  const fetchCrowdingReports = async () => {
+  const fetchReports = useCallback(async (
+    route: string,
+    showLoader = true
+  ) => {
     try {
-      setLoading(true);
+      if (showLoader) setLoading(true);
+      setErrorMessage('');
 
       const { data, error } = await supabase
         .from('crowding_reports')
         .select(
           'id, created_at, route_number, crowding_level, passenger_count, capacity, section'
         )
-        .eq('route_number', '138')
-        .order('created_at', { ascending: true });
+        .eq('route_number', route)
+        .order('created_at', { ascending: false })
+        .limit(100);
 
-      if (error) {
-        throw error;
-      }
+      if (error) throw error;
 
-      setCrowdingReports((data ?? []) as CrowdingReport[]);
+      setReports((data ?? []) as CrowdingReport[]);
     } catch (error) {
-      console.error('Error loading crowding reports:', error);
+      console.error('Crowding fetch failed:', error);
+      setErrorMessage('Unable to load crowding reports.');
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
+  }, []);
+
+  useEffect(() => {
+    fetchReports(routeNumber);
+  }, [routeNumber, fetchReports]);
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    fetchReports(routeNumber, false);
   };
 
-  // CREATE operation
-  const submitCrowdingReport = async () => {
+  const changeRoute = () => {
+    const nextRoute = routeInput.trim();
+
+    if (!nextRoute || !/^[a-zA-Z0-9 -]{1,20}$/.test(nextRoute)) {
+      Alert.alert(
+        'Invalid route',
+        'Enter a valid bus route number.'
+      );
+      return;
+    }
+
+    setReports([]);
+    setSuccessMessage('');
+    setRouteNumber(nextRoute);
+  };
+
+  const analytics = useMemo(() => {
+    const latestBySection: Partial<
+      Record<Section, CrowdingReport>
+    > = {};
+
+    const scores: number[] = [];
+
+    for (const report of reports) {
+      const level = normalizeLevel(report.crowding_level);
+      if (level) scores.push(levelScore(level));
+
+      const section = SECTIONS.find(
+        item => item.toLowerCase() ===
+          report.section?.trim().toLowerCase()
+      );
+
+      if (section && !latestBySection[section]) {
+        latestBySection[section] = report;
+      }
+    }
+
+    const averageScore = scores.length
+      ? scores.reduce((sum, score) => sum + score, 0) /
+        scores.length
+      : null;
+
+    const overallLevel = averageScore === null
+      ? null
+      : scoreLevel(averageScore);
+
+    const countedReport = reports.find(
+      report =>
+        report.passenger_count !== null &&
+        report.capacity !== null &&
+        report.capacity > 0 &&
+        report.passenger_count >= 0
+    );
+
+    const occupancy = countedReport
+      ? Math.round(
+          (countedReport.passenger_count! /
+            countedReport.capacity!) * 100
+        )
+      : null;
+
+    const levels = LEVELS.map(level => ({
+      level,
+      count: reports.filter(
+        report => normalizeLevel(report.crowding_level) === level
+      ).length,
+    }));
+
+    const availableSections = SECTIONS
+      .map(section => ({
+        section,
+        report: latestBySection[section],
+      }))
+      .filter(
+        item => normalizeLevel(item.report?.crowding_level)
+      );
+
+    const bestSection = availableSections.length
+      ? [...availableSections].sort((a, b) => {
+          const aLevel = normalizeLevel(a.report?.crowding_level)!;
+          const bLevel = normalizeLevel(b.report?.crowding_level)!;
+          return levelScore(aLevel) - levelScore(bLevel);
+        })[0]
+      : null;
+
+    return {
+      latestBySection,
+      overallLevel,
+      occupancy,
+      countedReport,
+      levels,
+      bestSection,
+      latestReport: reports[0],
+    };
+  }, [reports]);
+
+  const submitReport = async () => {
     if (!selectedLevel) {
       Alert.alert(
-        'Select Crowding Level',
-        'Please select Low, Medium, or High before submitting.'
+        'Crowding level required',
+        'Please select Low, Medium, or High.'
+      );
+      return;
+    }
+
+    const capacity = Number(capacityInput.trim());
+
+    if (
+      !Number.isInteger(capacity) ||
+      capacity < 1 ||
+      capacity > 300
+    ) {
+      Alert.alert(
+        'Invalid capacity',
+        'Enter a capacity between 1 and 300.'
+      );
+      return;
+    }
+
+    const hasPassengerCount = passengerInput.trim() !== '';
+    const passengerCount = hasPassengerCount
+      ? Number(passengerInput.trim())
+      : null;
+
+    if (
+      hasPassengerCount &&
+      (
+        !Number.isInteger(passengerCount) ||
+        passengerCount! < 0 ||
+        passengerCount! > capacity
+      )
+    ) {
+      Alert.alert(
+        'Invalid passenger count',
+        'Enter a whole number between 0 and the bus capacity.'
       );
       return;
     }
@@ -83,1115 +326,1029 @@ export default function CrowdingScreen() {
 
       const { error } = await supabase
         .from('crowding_reports')
-        .insert([
-          {
-            route_number: '138',
-            crowding_level: selectedLevel,
-            passenger_count: null,
-            capacity: 50,
-            section: 'Passenger Report',
-          },
-        ]);
+        .insert([{
+          route_number: routeNumber,
+          crowding_level: selectedLevel,
+          passenger_count: passengerCount,
+          capacity,
+          section: selectedSection,
+        }]);
 
-      if (error) {
-        throw error;
-      }
+      if (error) throw error;
 
       setSuccessMessage(
-        `Thank you! Your ${selectedLevel} crowding report was submitted.`
+        `${selectedLevel} crowding reported for the ${selectedSection.toLowerCase()} section.`
       );
 
       setSelectedLevel(null);
+      setPassengerInput('');
+      setShowForm(false);
 
-      // Refresh data after creating the report
-      await fetchCrowdingReports();
+      await fetchReports(routeNumber, false);
+      Alert.alert('Report submitted', 'Thank you for helping passengers!');
     } catch (error) {
-      console.error('Error submitting crowding report:', error);
-
+      console.error('Crowding submission failed:', error);
       Alert.alert(
-        'Submission Failed',
-        'Unable to submit your crowding report. Please try again.'
+        'Submission failed',
+        'Unable to save the report. Please try again.'
       );
     } finally {
       setSubmitting(false);
     }
   };
 
-  const overallReport = crowdingReports.find(
-    (report) => report.section?.toLowerCase() === 'overall'
-  );
+  const renderSection = (section: Section) => {
+    const report = analytics.latestBySection[section];
+    const level = normalizeLevel(report?.crowding_level);
+    const colors = level
+      ? levelColors[level]
+      : { color: '#64748B', background: '#F1F5F9' };
 
-  const frontReport = crowdingReports.find(
-    (report) => report.section?.toLowerCase() === 'front'
-  );
+    const active = selectedSection === section;
 
-  const middleReport = crowdingReports.find(
-    (report) => report.section?.toLowerCase() === 'middle'
-  );
-
-  const rearReport = crowdingReports.find(
-    (report) => report.section?.toLowerCase() === 'rear'
-  );
-
-  const passengerCount = overallReport?.passenger_count ?? 0;
-  const capacity = overallReport?.capacity ?? 0;
-
-  const occupancy =
-    capacity > 0
-      ? Math.round((passengerCount / capacity) * 100)
-      : 0;
-
-  const overallLevel =
-    overallReport?.crowding_level ?? 'Unknown';
-
-  const getCrowdingDescription = (level: string) => {
-    switch (level.toLowerCase()) {
-      case 'low':
-        return 'Plenty of space';
-
-      case 'medium':
-        return 'Seats filling up';
-
-      case 'high':
-        return 'Very crowded';
-
-      default:
-        return 'Crowding status unavailable';
-    }
-  };
-
-  const getUpdatedTime = () => {
-    if (!overallReport?.created_at) {
-      return 'Waiting for update';
-    }
-
-    const createdTime = new Date(
-      overallReport.created_at
-    ).getTime();
-
-    const currentTime = new Date().getTime();
-
-    const minutes = Math.max(
-      0,
-      Math.floor((currentTime - createdTime) / 60000)
+    return (
+      <TouchableOpacity
+        key={section}
+        activeOpacity={0.8}
+        onPress={() => {
+          setSelectedSection(section);
+          setShowForm(true);
+          setSuccessMessage('');
+        }}
+        style={[
+          styles.heatmapCard,
+          { backgroundColor: colors.background },
+          active && styles.activeHeatmapCard,
+        ]}
+      >
+        <Ionicons
+          name={
+            section === 'Front'
+              ? 'arrow-up-circle-outline'
+              : section === 'Middle'
+                ? 'remove-circle-outline'
+                : 'arrow-down-circle-outline'
+          }
+          size={25}
+          color={colors.color}
+        />
+        <Text style={styles.heatmapTitle}>{section}</Text>
+        <Text style={[styles.heatmapLevel, { color: colors.color }]}>
+          {level ?? 'Unknown'}
+        </Text>
+        <View style={styles.miniBars}>
+          {Array.from({ length: 5 }).map((_, index) => (
+            <View
+              key={index}
+              style={[
+                styles.miniBar,
+                {
+                  backgroundColor:
+                    level && index < levelScore(level) * 2 - 1
+                      ? colors.color
+                      : '#CBD5E1',
+                },
+              ]}
+            />
+          ))}
+        </View>
+        <Text style={styles.heatmapHint}>
+          {report ? timeAgo(report.created_at) : 'No reports yet'}
+        </Text>
+      </TouchableOpacity>
     );
-
-    if (minutes < 1) {
-      return 'Updated just now';
-    }
-
-    if (minutes < 60) {
-      return `Updated ${minutes} min ago`;
-    }
-
-    const hours = Math.floor(minutes / 60);
-
-    if (hours < 24) {
-      return `Updated ${hours} hr${hours > 1 ? 's' : ''} ago`;
-    }
-
-    const days = Math.floor(hours / 24);
-
-    return `Updated ${days} day${days > 1 ? 's' : ''} ago`;
   };
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity
-          style={styles.backButton}
           onPress={() => router.back()}
+          style={styles.backButton}
         >
-          <Ionicons
-            name="arrow-back"
-            size={22}
-            color="#111827"
-          />
+          <Ionicons name="arrow-back" size={22} color={NAVY} />
         </TouchableOpacity>
 
-        <View style={styles.headerText}>
-          <Text style={styles.headerTitle}>
-            Passenger Capacity
-          </Text>
-
+        <View style={{ flex: 1 }}>
+          <Text style={styles.headerTitle}>Smart Crowding</Text>
           <Text style={styles.headerSubtitle}>
-            Bus 138 • Pettah → Homagama
+            Passenger capacity & crowd reports
           </Text>
         </View>
 
-        <TouchableOpacity style={styles.moreButton}>
-          <Ionicons
-            name="ellipsis-horizontal"
-            size={22}
-            color="#374151"
-          />
+        <TouchableOpacity
+          onPress={onRefresh}
+          style={styles.refreshButton}
+        >
+          <Ionicons name="refresh-outline" size={23} color={NAVY} />
         </TouchableOpacity>
       </View>
 
       <ScrollView
-        contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.content}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+          />
+        }
       >
-        {/* Live status */}
-        <View style={styles.liveRow}>
-          <View style={styles.liveDot} />
+        <View style={styles.routeCard}>
+          <View style={styles.routeHeading}>
+            <Ionicons name="bus" size={23} color={NAVY} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.routeTitle}>
+                Select Bus Route
+              </Text>
+              <Text style={styles.muted}>
+                Currently viewing Route {routeNumber}
+              </Text>
+            </View>
+          </View>
 
-          <Text style={styles.liveText}>
-            LIVE CROWDING STATUS
-          </Text>
-
-          <View style={styles.updatedContainer}>
-            <Ionicons
-              name="time-outline"
-              size={14}
-              color="#6B7280"
+          <View style={styles.routeInputRow}>
+            <TextInput
+              style={styles.routeInput}
+              value={routeInput}
+              onChangeText={setRouteInput}
+              placeholder="e.g. 138"
+              maxLength={20}
+              autoCapitalize="characters"
             />
-
-            <Text style={styles.updatedText}>
-              {getUpdatedTime()}
-            </Text>
+            <TouchableOpacity
+              style={styles.routeButton}
+              onPress={changeRoute}
+            >
+              <Text style={styles.routeButtonText}>View</Text>
+            </TouchableOpacity>
           </View>
         </View>
 
-        {/* Main crowding card */}
-        <View style={styles.mainCard}>
-          <View style={styles.mainCardTop}>
-            <View>
-              <Text style={styles.smallLabel}>
-                CURRENT CROWDING
+        {errorMessage !== '' && (
+          <View style={styles.errorBox}>
+            <Ionicons
+              name="alert-circle-outline"
+              size={19}
+              color="#B91C1C"
+            />
+            <Text style={styles.errorText}>{errorMessage}</Text>
+          </View>
+        )}
+
+        {loading ? (
+          <View style={styles.loadingBox}>
+            <ActivityIndicator size="large" color={BLUE} />
+            <Text style={styles.muted}>
+              Loading crowding information...
+            </Text>
+          </View>
+        ) : (
+          <>
+            <View style={styles.overviewCard}>
+              <View style={styles.overviewTop}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.overviewEyebrow}>
+                    CROWDING OVERVIEW
+                  </Text>
+                  <Text style={styles.overviewTitle}>
+                    Route {routeNumber}
+                  </Text>
+                  <Text style={styles.muted}>
+                    Based on passenger-submitted reports
+                  </Text>
+                </View>
+                <LevelBadge level={analytics.overallLevel} />
+              </View>
+
+              <View style={styles.statsGrid}>
+                <View style={styles.statBox}>
+                  <Ionicons
+                    name="people-outline"
+                    size={22}
+                    color={BLUE}
+                  />
+                  <Text style={styles.statValue}>
+                    {reports.length}
+                  </Text>
+                  <Text style={styles.statLabel}>
+                    Recent reports
+                  </Text>
+                </View>
+
+                <View style={styles.statBox}>
+                  <Ionicons
+                    name="speedometer-outline"
+                    size={22}
+                    color="#B45309"
+                  />
+                  <Text style={styles.statValue}>
+                    {analytics.occupancy === null
+                      ? 'N/A'
+                      : `${analytics.occupancy}%`}
+                  </Text>
+                  <Text style={styles.statLabel}>
+                    Reported occupancy
+                  </Text>
+                </View>
+
+                <View style={styles.statBox}>
+                  <Ionicons
+                    name="time-outline"
+                    size={22}
+                    color="#15803D"
+                  />
+                  <Text style={styles.statValueSmall}>
+                    {analytics.latestReport
+                      ? timeAgo(analytics.latestReport.created_at)
+                      : 'N/A'}
+                  </Text>
+                  <Text style={styles.statLabel}>
+                    Latest update
+                  </Text>
+                </View>
+              </View>
+
+              {analytics.countedReport && (
+                <Text style={styles.occupancyNote}>
+                  Latest available count: {
+                    analytics.countedReport.passenger_count
+                  } / {analytics.countedReport.capacity} passengers.
+                  This is a reported estimate.
+                </Text>
+              )}
+            </View>
+
+            <View style={styles.sectionHeadingRow}>
+              <View>
+                <Text style={styles.sectionTitle}>
+                  Bus Section Heatmap
+                </Text>
+                <Text style={styles.muted}>
+                  Tap a section to submit an update
+                </Text>
+              </View>
+              <Ionicons
+                name="analytics-outline"
+                size={24}
+                color={BLUE}
+              />
+            </View>
+
+            <View style={styles.heatmapRow}>
+              {SECTIONS.map(renderSection)}
+            </View>
+
+            <View style={styles.legend}>
+              {LEVELS.map(level => (
+                <View key={level} style={styles.legendItem}>
+                  <View
+                    style={[
+                      styles.legendDot,
+                      {
+                        backgroundColor: levelColors[level].color,
+                      },
+                    ]}
+                  />
+                  <Text style={styles.legendText}>{level}</Text>
+                </View>
+              ))}
+            </View>
+
+            <View style={styles.analyticsCard}>
+              <View style={styles.cardTitleRow}>
+                <Ionicons
+                  name="bar-chart-outline"
+                  size={22}
+                  color={NAVY}
+                />
+                <Text style={styles.cardTitle}>
+                  Crowding Report Analytics
+                </Text>
+              </View>
+
+              <Text style={styles.muted}>
+                Distribution of the latest {reports.length} reports
               </Text>
 
-              <Text style={styles.crowdingTitle}>
-                {loading ? 'Loading...' : overallLevel}
-              </Text>
+              {analytics.levels.map(({ level, count }) => {
+                const percent = reports.length
+                  ? Math.round(count / reports.length * 100)
+                  : 0;
 
-              <View style={styles.mediumBadge}>
-                <View style={styles.mediumDot} />
+                return (
+                  <View key={level} style={styles.analyticsRow}>
+                    <View style={styles.analyticsLabels}>
+                      <Text style={styles.analyticsName}>
+                        {level}
+                      </Text>
+                      <Text style={styles.analyticsPercent}>
+                        {count} ({percent}%)
+                      </Text>
+                    </View>
 
-                <Text style={styles.mediumBadgeText}>
-                  {loading
-                    ? 'Loading crowding status'
-                    : getCrowdingDescription(overallLevel)}
+                    <View style={styles.progressTrack}>
+                      <View
+                        style={[
+                          styles.progressFill,
+                          {
+                            width: `${percent}%`,
+                            backgroundColor: levelColors[level].color,
+                          },
+                        ]}
+                      />
+                    </View>
+                  </View>
+                );
+              })}
+
+              {reports.length === 0 && (
+                <Text style={styles.emptyText}>
+                  No reports for this route yet. Be the first
+                  passenger to submit one.
+                </Text>
+              )}
+            </View>
+
+            <View style={styles.tipCard}>
+              <Ionicons
+                name="bulb-outline"
+                size={24}
+                color="#1D4ED8"
+              />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.tipTitle}>
+                  Smart Boarding Suggestion
+                </Text>
+                <Text style={styles.tipText}>
+                  {analytics.bestSection
+                    ? `The ${analytics.bestSection.section.toLowerCase()} section has the lowest latest reported crowding among sections with available data. Check conditions before boarding.`
+                    : 'Not enough section reports are available to recommend a boarding area yet.'}
                 </Text>
               </View>
             </View>
 
-            <View style={styles.peopleIcon}>
-              <Ionicons
-                name="people"
-                size={32}
-                color="#D97706"
-              />
-            </View>
-          </View>
+            <View style={styles.formHeading}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.sectionTitle}>
+                  Passenger Crowding Report
+                </Text>
+                <Text style={styles.muted}>
+                  Help others make informed travel decisions
+                </Text>
+              </View>
 
-          <View style={styles.occupancyHeader}>
-            <Text style={styles.occupancyLabel}>
-              Estimated Occupancy
-            </Text>
-
-            <Text style={styles.occupancyValue}>
-              {occupancy}%
-            </Text>
-          </View>
-
-          <View style={styles.progressBackground}>
-            <View
-              style={[
-                styles.progressFill,
-                {
-                  width: `${Math.min(occupancy, 100)}%`,
-                },
-              ]}
-            />
-          </View>
-
-          <View style={styles.capacityRow}>
-            <Text style={styles.capacityText}>
-              Approx. {passengerCount} passengers
-            </Text>
-
-            <Text style={styles.capacityText}>
-              {capacity} capacity
-            </Text>
-          </View>
-        </View>
-
-        {/* Crowding levels */}
-        <Text style={styles.sectionTitle}>
-          CROWDING LEVELS
-        </Text>
-
-        <View style={styles.levelGuide}>
-          <View style={styles.levelItem}>
-            <View
-              style={[
-                styles.levelDot,
-                styles.lowColor,
-              ]}
-            />
-
-            <View>
-              <Text style={styles.levelName}>
-                Low
-              </Text>
-
-              <Text style={styles.levelDescription}>
-                Plenty of space
-              </Text>
-            </View>
-          </View>
-
-          <View style={styles.levelItem}>
-            <View
-              style={[
-                styles.levelDot,
-                styles.mediumColor,
-              ]}
-            />
-
-            <View>
-              <Text style={styles.levelName}>
-                Medium
-              </Text>
-
-              <Text style={styles.levelDescription}>
-                Seats filling up
-              </Text>
-            </View>
-          </View>
-
-          <View style={styles.levelItem}>
-            <View
-              style={[
-                styles.levelDot,
-                styles.highColor,
-              ]}
-            />
-
-            <View>
-              <Text style={styles.levelName}>
-                High
-              </Text>
-
-              <Text style={styles.levelDescription}>
-                Very crowded
-              </Text>
-            </View>
-          </View>
-        </View>
-
-        {/* Bus sections */}
-        <Text style={styles.sectionTitle}>
-          BUS SECTIONS
-        </Text>
-
-        <View style={styles.busCard}>
-          <View style={styles.busVisual}>
-            <Ionicons
-              name="bus-outline"
-              size={34}
-              color="#2563EB"
-            />
-
-            <View style={styles.busLine} />
-
-            <Text style={styles.busNumber}>
-              138
-            </Text>
-          </View>
-
-          <View style={styles.sectionDivider} />
-
-          <BusSection
-            icon="arrow-up-outline"
-            title="Front Section"
-            description="Driver & front seats"
-            level={
-              frontReport?.crowding_level ??
-              'Unknown'
-            }
-            levelStyle={styles.highBadge}
-            levelTextStyle={styles.highBadgeText}
-          />
-
-          <View style={styles.sectionDivider} />
-
-          <BusSection
-            icon="remove-outline"
-            title="Middle Section"
-            description="Main seating area"
-            level={
-              middleReport?.crowding_level ??
-              'Unknown'
-            }
-            levelStyle={styles.mediumSectionBadge}
-            levelTextStyle={styles.mediumSectionText}
-          />
-
-          <View style={styles.sectionDivider} />
-
-          <BusSection
-            icon="arrow-down-outline"
-            title="Rear Section"
-            description="Back seats"
-            level={
-              rearReport?.crowding_level ??
-              'Unknown'
-            }
-            levelStyle={styles.lowBadge}
-            levelTextStyle={styles.lowBadgeText}
-          />
-        </View>
-
-        {/* Recommendation */}
-        <View style={styles.tipCard}>
-          <View style={styles.tipIcon}>
-            <Ionicons
-              name="bulb-outline"
-              size={22}
-              color="#2563EB"
-            />
-          </View>
-
-          <View style={styles.tipContent}>
-            <Text style={styles.tipTitle}>
-              Travel Tip
-            </Text>
-
-            <Text style={styles.tipText}>
-              The rear section currently has more available space.
-            </Text>
-          </View>
-        </View>
-
-        {/* Passenger crowding report */}
-        <Text style={styles.reportSectionTitle}>
-          REPORT CURRENT CROWDING
-        </Text>
-
-        <View style={styles.reportCard}>
-          <View style={styles.reportHeadingRow}>
-            <View style={styles.reportIcon}>
-              <Ionicons
-                name="people-outline"
-                size={22}
-                color="#2563EB"
-              />
-            </View>
-
-            <View style={styles.reportHeadingText}>
-              <Text style={styles.reportTitle}>
-                How crowded is the bus?
-              </Text>
-
-              <Text style={styles.reportSubtitle}>
-                Help other passengers by reporting what you see.
-              </Text>
-            </View>
-          </View>
-
-          <View style={styles.reportOptions}>
-            <TouchableOpacity
-              style={[
-                styles.reportOption,
-                selectedLevel === 'Low' &&
-                  styles.selectedLowOption,
-              ]}
-              onPress={() => {
-                setSelectedLevel('Low');
-                setSuccessMessage('');
-              }}
-            >
-              <View
-                style={[
-                  styles.reportDot,
-                  styles.lowColor,
-                ]}
-              />
-
-              <Text style={styles.reportOptionText}>
-                Low
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[
-                styles.reportOption,
-                selectedLevel === 'Medium' &&
-                  styles.selectedMediumOption,
-              ]}
-              onPress={() => {
-                setSelectedLevel('Medium');
-                setSuccessMessage('');
-              }}
-            >
-              <View
-                style={[
-                  styles.reportDot,
-                  styles.mediumColor,
-                ]}
-              />
-
-              <Text style={styles.reportOptionText}>
-                Medium
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[
-                styles.reportOption,
-                selectedLevel === 'High' &&
-                  styles.selectedHighOption,
-              ]}
-              onPress={() => {
-                setSelectedLevel('High');
-                setSuccessMessage('');
-              }}
-            >
-              <View
-                style={[
-                  styles.reportDot,
-                  styles.highColor,
-                ]}
-              />
-
-              <Text style={styles.reportOptionText}>
-                High
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          <TouchableOpacity
-            style={[
-              styles.submitButton,
-              (!selectedLevel || submitting) &&
-                styles.submitButtonDisabled,
-            ]}
-            onPress={submitCrowdingReport}
-            disabled={!selectedLevel || submitting}
-            activeOpacity={0.85}
-          >
-            {submitting ? (
-              <Text style={styles.submitButtonText}>
-                Submitting...
-              </Text>
-            ) : (
-              <>
+              <TouchableOpacity
+                style={styles.formToggle}
+                onPress={() => setShowForm(!showForm)}
+              >
                 <Ionicons
-                  name="send-outline"
-                  size={18}
+                  name={showForm ? 'chevron-up' : 'add'}
+                  size={19}
                   color="#FFFFFF"
                 />
-
-                <Text style={styles.submitButtonText}>
-                  Submit Report
+                <Text style={styles.formToggleText}>
+                  {showForm ? 'Close' : 'Report'}
                 </Text>
-              </>
-            )}
-          </TouchableOpacity>
-
-          {successMessage !== '' && (
-            <View style={styles.successMessage}>
-              <Ionicons
-                name="checkmark-circle"
-                size={19}
-                color="#16A34A"
-              />
-
-              <Text style={styles.successMessageText}>
-                {successMessage}
-              </Text>
+              </TouchableOpacity>
             </View>
-          )}
-        </View>
 
-        <Text style={styles.disclaimer}>
-          Crowding levels are estimates and may change during the journey.
-        </Text>
+            {successMessage !== '' && (
+              <View style={styles.successBox}>
+                <Ionicons
+                  name="checkmark-circle"
+                  size={20}
+                  color="#15803D"
+                />
+                <Text style={styles.successText}>
+                  {successMessage}
+                </Text>
+              </View>
+            )}
+
+            {showForm && (
+              <View style={styles.formCard}>
+                <View style={styles.cardTitleRow}>
+                  <Ionicons
+                    name="clipboard-outline"
+                    size={22}
+                    color={BLUE}
+                  />
+                  <Text style={styles.cardTitle}>
+                    Submit a Crowding Report
+                  </Text>
+                </View>
+
+                <Text style={styles.formDescription}>
+                  Reporting for Route {routeNumber}
+                </Text>
+
+                <Text style={styles.fieldLabel}>
+                  1. Which section are you in?
+                </Text>
+
+                <View style={styles.choiceRow}>
+                  {SECTIONS.map(section => (
+                    <TouchableOpacity
+                      key={section}
+                      style={[
+                        styles.choiceButton,
+                        selectedSection === section &&
+                          styles.choiceSelected,
+                      ]}
+                      onPress={() => setSelectedSection(section)}
+                    >
+                      <Text
+                        style={[
+                          styles.choiceText,
+                          selectedSection === section &&
+                            styles.choiceSelectedText,
+                        ]}
+                      >
+                        {section}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                <Text style={styles.fieldLabel}>
+                  2. How crowded is the bus?
+                </Text>
+
+                <View style={styles.choiceRow}>
+                  {LEVELS.map(level => {
+                    const active = selectedLevel === level;
+                    return (
+                      <TouchableOpacity
+                        key={level}
+                        style={[
+                          styles.choiceButton,
+                          active && {
+                            borderColor: levelColors[level].color,
+                            backgroundColor:
+                              levelColors[level].background,
+                          },
+                        ]}
+                        onPress={() => setSelectedLevel(level)}
+                      >
+                        <Text
+                          style={[
+                            styles.choiceText,
+                            active && {
+                              color: levelColors[level].color,
+                            },
+                          ]}
+                        >
+                          {level}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+
+                <Text style={styles.fieldLabel}>
+                  3. Estimated passenger count (optional)
+                </Text>
+
+                <TextInput
+                  style={styles.textInput}
+                  value={passengerInput}
+                  onChangeText={setPassengerInput}
+                  placeholder="e.g. 35"
+                  keyboardType="number-pad"
+                  maxLength={3}
+                />
+
+                <Text style={styles.fieldLabel}>
+                  4. Estimated bus capacity
+                </Text>
+
+                <TextInput
+                  style={styles.textInput}
+                  value={capacityInput}
+                  onChangeText={setCapacityInput}
+                  placeholder="e.g. 50"
+                  keyboardType="number-pad"
+                  maxLength={3}
+                />
+
+                <View style={styles.formNotice}>
+                  <Ionicons
+                    name="information-circle-outline"
+                    size={19}
+                    color="#1D4ED8"
+                  />
+                  <Text style={styles.formNoticeText}>
+                    Report what you observe. Passenger counts and
+                    capacity are estimates, not verified live data.
+                  </Text>
+                </View>
+
+                <TouchableOpacity
+                  style={[
+                    styles.submitButton,
+                    (!selectedLevel || submitting) &&
+                      styles.disabledButton,
+                  ]}
+                  onPress={submitReport}
+                  disabled={!selectedLevel || submitting}
+                >
+                  {submitting ? (
+                    <ActivityIndicator color="#FFFFFF" />
+                  ) : (
+                    <>
+                      <Ionicons
+                        name="send-outline"
+                        size={19}
+                        color="#FFFFFF"
+                      />
+                      <Text style={styles.submitText}>
+                        Submit Crowding Report
+                      </Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </View>
+            )}
+
+            <Text style={styles.disclaimer}>
+              Crowding information is crowdsourced and may be
+              outdated or inaccurate. Check actual bus conditions
+              before boarding.
+            </Text>
+          </>
+        )}
       </ScrollView>
     </SafeAreaView>
-  );
-}
-
-type BusSectionProps = {
-  icon: keyof typeof Ionicons.glyphMap;
-  title: string;
-  description: string;
-  level: string;
-  levelStyle: object;
-  levelTextStyle: object;
-};
-
-function BusSection({
-  icon,
-  title,
-  description,
-  level,
-  levelStyle,
-  levelTextStyle,
-}: BusSectionProps) {
-  return (
-    <View style={styles.busSection}>
-      <View style={styles.sectionIcon}>
-        <Ionicons
-          name={icon}
-          size={19}
-          color="#374151"
-        />
-      </View>
-
-      <View style={styles.sectionInformation}>
-        <Text style={styles.busSectionTitle}>
-          {title}
-        </Text>
-
-        <Text style={styles.busSectionDescription}>
-          {description}
-        </Text>
-      </View>
-
-      <View
-        style={[
-          styles.sectionBadge,
-          levelStyle,
-        ]}
-      >
-        <Text
-          style={[
-            styles.sectionBadgeText,
-            levelTextStyle,
-          ]}
-        >
-          {level}
-        </Text>
-      </View>
-    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F7F8FA',
+    backgroundColor: '#F5F7FC',
   },
-
   header: {
     backgroundColor: '#FFFFFF',
-    paddingHorizontal: 18,
-    paddingVertical: 15,
     flexDirection: 'row',
     alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
     borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
+    borderBottomColor: '#E2E8F0',
+    gap: 12,
   },
-
   backButton: {
-    width: 42,
-    height: 42,
-    borderRadius: 13,
-    backgroundColor: '#F3F4F6',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-
-  headerText: {
-    flex: 1,
-    marginLeft: 13,
-  },
-
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#111827',
-  },
-
-  headerSubtitle: {
-    fontSize: 12,
-    color: '#6B7280',
-    marginTop: 2,
-  },
-
-  moreButton: {
     width: 40,
     height: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-
-  content: {
-    padding: 20,
-    paddingBottom: 45,
-  },
-
-  liveRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-
-  liveDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#16A34A',
-    marginRight: 7,
-  },
-
-  liveText: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: '#16A34A',
-    letterSpacing: 0.6,
-  },
-
-  updatedContainer: {
-    marginLeft: 'auto',
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-
-  updatedText: {
-    fontSize: 11,
-    color: '#6B7280',
-    marginLeft: 4,
-  },
-
-  mainCard: {
-    backgroundColor: '#FFFBEB',
-    borderRadius: 20,
-    padding: 20,
-    borderWidth: 1,
-    borderColor: '#FDE68A',
-    marginBottom: 25,
-  },
-
-  mainCardTop: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 24,
-  },
-
-  smallLabel: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: '#92400E',
-    letterSpacing: 0.6,
-  },
-
-  crowdingTitle: {
-    fontSize: 30,
-    fontWeight: '800',
-    color: '#111827',
-    marginTop: 4,
-  },
-
-  mediumBadge: {
-    alignSelf: 'flex-start',
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FEF3C7',
-    paddingHorizontal: 9,
-    paddingVertical: 5,
-    borderRadius: 20,
-    marginTop: 8,
-  },
-
-  mediumDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: '#D97706',
-    marginRight: 6,
-  },
-
-  mediumBadgeText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#92400E',
-  },
-
-  peopleIcon: {
-    width: 58,
-    height: 58,
-    borderRadius: 18,
-    backgroundColor: '#FEF3C7',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-
-  occupancyHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 8,
-  },
-
-  occupancyLabel: {
-    fontSize: 12,
-    color: '#6B7280',
-  },
-
-  occupancyValue: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: '#D97706',
-  },
-
-  progressBackground: {
-    height: 10,
-    borderRadius: 10,
-    backgroundColor: '#FDE68A',
-    overflow: 'hidden',
-  },
-
-  progressFill: {
-    height: '100%',
-    backgroundColor: '#D97706',
-    borderRadius: 10,
-  },
-
-  capacityRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 8,
-  },
-
-  capacityText: {
-    fontSize: 11,
-    color: '#6B7280',
-  },
-
-  sectionTitle: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: '#6B7280',
-    letterSpacing: 0.8,
-    marginBottom: 12,
-  },
-
-  levelGuide: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 18,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    marginBottom: 25,
-  },
-
-  levelItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginVertical: 8,
-  },
-
-  levelDot: {
-    width: 13,
-    height: 13,
-    borderRadius: 7,
-    marginRight: 12,
-  },
-
-  lowColor: {
-    backgroundColor: '#16A34A',
-  },
-
-  mediumColor: {
-    backgroundColor: '#D97706',
-  },
-
-  highColor: {
-    backgroundColor: '#DC2626',
-  },
-
-  levelName: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#111827',
-  },
-
-  levelDescription: {
-    fontSize: 11,
-    color: '#6B7280',
-    marginTop: 2,
-  },
-
-  busCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 18,
-    padding: 17,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    marginBottom: 16,
-  },
-
-  busVisual: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 15,
-  },
-
-  busLine: {
-    flex: 1,
-    height: 2,
-    backgroundColor: '#DBEAFE',
-    marginHorizontal: 12,
-  },
-
-  busNumber: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: '#2563EB',
-  },
-
-  busSection: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-
-  sectionIcon: {
-    width: 38,
-    height: 38,
     borderRadius: 12,
-    backgroundColor: '#F3F4F6',
-    justifyContent: 'center',
+    backgroundColor: '#F1F5F9',
     alignItems: 'center',
-    marginRight: 11,
+    justifyContent: 'center',
   },
-
-  sectionInformation: {
-    flex: 1,
-  },
-
-  busSectionTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#111827',
-  },
-
-  busSectionDescription: {
-    fontSize: 11,
-    color: '#6B7280',
-    marginTop: 2,
-  },
-
-  sectionDivider: {
-    height: 1,
-    backgroundColor: '#E5E7EB',
-    marginVertical: 14,
-  },
-
-  sectionBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 20,
-  },
-
-  sectionBadgeText: {
-    fontSize: 11,
+  headerTitle: {
+    fontSize: 19,
     fontWeight: '800',
+    color: NAVY,
   },
-
-  highBadge: {
-    backgroundColor: '#FEE2E2',
+  headerSubtitle: {
+    fontSize: 11,
+    color: '#64748B',
+    marginTop: 3,
   },
-
-  highBadgeText: {
-    color: '#DC2626',
-  },
-
-  mediumSectionBadge: {
-    backgroundColor: '#FEF3C7',
-  },
-
-  mediumSectionText: {
-    color: '#D97706',
-  },
-
-  lowBadge: {
-    backgroundColor: '#DCFCE7',
-  },
-
-  lowBadgeText: {
-    color: '#16A34A',
-  },
-
-  tipCard: {
+  refreshButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
     backgroundColor: '#EFF6FF',
+  },
+  content: {
+    padding: 16,
+    paddingBottom: 50,
+    gap: 18,
+  },
+  routeCard: {
+    backgroundColor: '#FFFFFF',
     borderRadius: 18,
     padding: 16,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  routeHeading: {
     flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 14,
+  },
+  routeTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#0F172A',
+  },
+  muted: {
+    fontSize: 12,
+    color: '#64748B',
+    marginTop: 4,
+    lineHeight: 17,
+  },
+  routeInputRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  routeInput: {
+    flex: 1,
+    height: 46,
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    borderRadius: 12,
+    paddingHorizontal: 13,
+    fontSize: 15,
+    color: '#0F172A',
+  },
+  routeButton: {
+    backgroundColor: NAVY,
+    paddingHorizontal: 22,
+    borderRadius: 12,
+    justifyContent: 'center',
+  },
+  routeButtonText: {
+    color: '#FFFFFF',
+    fontWeight: '800',
+    fontSize: 13,
+  },
+  errorBox: {
+    backgroundColor: '#FEE2E2',
+    borderRadius: 12,
+    padding: 12,
+    flexDirection: 'row',
+    gap: 8,
+    alignItems: 'center',
+  },
+  errorText: {
+    color: '#991B1B',
+    fontSize: 12,
+    flex: 1,
+  },
+  loadingBox: {
+    padding: 35,
+    alignItems: 'center',
+    gap: 14,
+  },
+  overviewCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 18,
     borderWidth: 1,
     borderColor: '#DBEAFE',
   },
-
-  tipIcon: {
-    width: 42,
-    height: 42,
-    borderRadius: 13,
-    backgroundColor: '#DBEAFE',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
+  overviewTop: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    marginBottom: 20,
   },
-
-  tipContent: {
+  overviewEyebrow: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 1,
+    color: BLUE,
+  },
+  overviewTitle: {
+    fontSize: 25,
+    fontWeight: '800',
+    color: NAVY,
+    marginTop: 5,
+  },
+  levelBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 20,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    gap: 5,
+  },
+  badgeDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+  },
+  levelBadgeText: {
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  statsGrid: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  statBox: {
+    flex: 1,
+    backgroundColor: '#F8FAFC',
+    borderRadius: 14,
+    paddingVertical: 15,
+    paddingHorizontal: 8,
+    alignItems: 'center',
+    minHeight: 108,
+  },
+  statValue: {
+    fontSize: 23,
+    fontWeight: '800',
+    color: '#0F172A',
+    marginTop: 9,
+  },
+  statValueSmall: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#0F172A',
+    marginTop: 15,
+    textAlign: 'center',
+  },
+  statLabel: {
+    fontSize: 10,
+    color: '#64748B',
+    textAlign: 'center',
+    marginTop: 5,
+  },
+  occupancyNote: {
+    fontSize: 11,
+    color: '#64748B',
+    marginTop: 14,
+    lineHeight: 17,
+  },
+  sectionHeadingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  sectionTitle: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: '#0F172A',
+  },
+  heatmapRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  heatmapCard: {
+    flex: 1,
+    borderRadius: 16,
+    paddingVertical: 15,
+    paddingHorizontal: 7,
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: 'transparent',
+    minHeight: 152,
+  },
+  activeHeatmapCard: {
+    borderColor: BLUE,
+  },
+  heatmapTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#0F172A',
+    marginTop: 8,
+  },
+  heatmapLevel: {
+    fontSize: 12,
+    fontWeight: '800',
+    marginTop: 5,
+  },
+  miniBars: {
+    flexDirection: 'row',
+    gap: 3,
+    marginTop: 12,
+    width: '90%',
+  },
+  miniBar: {
+    flex: 1,
+    height: 7,
+    borderRadius: 5,
+  },
+  heatmapHint: {
+    fontSize: 9,
+    color: '#64748B',
+    textAlign: 'center',
+    marginTop: 10,
+  },
+  legend: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 22,
+  },
+  legendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  legendDot: {
+    width: 9,
+    height: 9,
+    borderRadius: 5,
+  },
+  legendText: {
+    fontSize: 11,
+    color: '#475569',
+  },
+  analyticsCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  cardTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 9,
+  },
+  cardTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#0F172A',
     flex: 1,
   },
-
+  analyticsRow: {
+    marginTop: 18,
+  },
+  analyticsLabels: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 7,
+  },
+  analyticsName: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#334155',
+  },
+  analyticsPercent: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#334155',
+  },
+  progressTrack: {
+    height: 10,
+    borderRadius: 10,
+    backgroundColor: '#E2E8F0',
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+    borderRadius: 10,
+  },
+  emptyText: {
+    fontSize: 12,
+    color: '#64748B',
+    textAlign: 'center',
+    marginTop: 18,
+    lineHeight: 18,
+  },
+  tipCard: {
+    flexDirection: 'row',
+    gap: 12,
+    padding: 16,
+    borderRadius: 16,
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+  },
   tipTitle: {
     fontSize: 14,
     fontWeight: '800',
     color: '#1E3A8A',
-    marginBottom: 3,
   },
-
   tipText: {
     fontSize: 12,
-    lineHeight: 18,
+    lineHeight: 19,
     color: '#475569',
+    marginTop: 5,
   },
-
-  reportSectionTitle: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: '#6B7280',
-    letterSpacing: 0.8,
-    marginTop: 25,
-    marginBottom: 12,
-  },
-
-  reportCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 18,
-    padding: 17,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-  },
-
-  reportHeadingRow: {
+  formHeading: {
     flexDirection: 'row',
     alignItems: 'center',
-  },
-
-  reportIcon: {
-    width: 42,
-    height: 42,
-    borderRadius: 13,
-    backgroundColor: '#EFF6FF',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-  },
-
-  reportHeadingText: {
-    flex: 1,
-  },
-
-  reportTitle: {
-    fontSize: 15,
-    fontWeight: '800',
-    color: '#111827',
-  },
-
-  reportSubtitle: {
-    fontSize: 11,
-    color: '#6B7280',
-    lineHeight: 17,
-    marginTop: 3,
-  },
-
-  reportOptions: {
-    flexDirection: 'row',
     gap: 8,
-    marginTop: 18,
-    marginBottom: 15,
   },
-
-  reportOption: {
-    flex: 1,
-    minHeight: 48,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    borderRadius: 13,
+  formToggle: {
+    backgroundColor: BLUE,
+    borderRadius: 11,
+    paddingHorizontal: 13,
+    paddingVertical: 11,
     flexDirection: 'row',
-    justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
+    gap: 5,
   },
-
-  selectedLowOption: {
-    backgroundColor: '#F0FDF4',
-    borderColor: '#16A34A',
-  },
-
-  selectedMediumOption: {
-    backgroundColor: '#FFFBEB',
-    borderColor: '#D97706',
-  },
-
-  selectedHighOption: {
-    backgroundColor: '#FEF2F2',
-    borderColor: '#DC2626',
-  },
-
-  reportDot: {
-    width: 9,
-    height: 9,
-    borderRadius: 5,
-    marginRight: 6,
-  },
-
-  reportOptionText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#374151',
-  },
-
-  submitButton: {
-    minHeight: 48,
-    borderRadius: 13,
-    backgroundColor: '#2563EB',
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 7,
-  },
-
-  submitButtonDisabled: {
-    backgroundColor: '#9CA3AF',
-  },
-
-  submitButtonText: {
+  formToggleText: {
     color: '#FFFFFF',
-    fontSize: 13,
     fontWeight: '800',
+    fontSize: 12,
   },
-
-  successMessage: {
+  successBox: {
+    backgroundColor: '#DCFCE7',
+    borderRadius: 12,
+    padding: 12,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F0FDF4',
-    borderRadius: 12,
-    padding: 11,
-    marginTop: 12,
+    gap: 9,
   },
-
-  successMessageText: {
-    flex: 1,
-    marginLeft: 7,
-    fontSize: 11,
-    lineHeight: 16,
+  successText: {
     color: '#166534',
+    fontSize: 12,
+    flex: 1,
     fontWeight: '600',
   },
-
+  formCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  formDescription: {
+    color: '#64748B',
+    fontSize: 12,
+    marginTop: 8,
+    marginBottom: 14,
+  },
+  fieldLabel: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#334155',
+    marginTop: 16,
+    marginBottom: 10,
+  },
+  choiceRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  choiceButton: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    minHeight: 46,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  choiceSelected: {
+    borderColor: BLUE,
+    backgroundColor: '#EFF6FF',
+  },
+  choiceText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#475569',
+  },
+  choiceSelectedText: {
+    color: BLUE,
+  },
+  textInput: {
+    height: 47,
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    borderRadius: 12,
+    paddingHorizontal: 13,
+    color: '#0F172A',
+    fontSize: 14,
+  },
+  formNotice: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 9,
+    backgroundColor: '#EFF6FF',
+    borderRadius: 12,
+    padding: 12,
+    marginTop: 20,
+  },
+  formNoticeText: {
+    fontSize: 11,
+    color: '#1E40AF',
+    lineHeight: 17,
+    flex: 1,
+  },
+  submitButton: {
+    backgroundColor: BLUE,
+    borderRadius: 13,
+    minHeight: 50,
+    marginTop: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 8,
+  },
+  disabledButton: {
+    backgroundColor: '#94A3B8',
+  },
+  submitText: {
+    color: '#FFFFFF',
+    fontWeight: '800',
+    fontSize: 13,
+  },
   disclaimer: {
+    color: '#94A3B8',
     textAlign: 'center',
     fontSize: 11,
-    color: '#9CA3AF',
-    lineHeight: 16,
-    marginTop: 18,
+    lineHeight: 17,
+    marginTop: 5,
   },
 });

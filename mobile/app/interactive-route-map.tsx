@@ -144,11 +144,34 @@ export default function InteractiveRouteMapScreen() {
               <Text style={styles.metricVal}>{selectedBus?.accuracy_meters == null ? '—' : `±${Math.round(selectedBus.accuracy_meters)} m`}</Text>
               <Text style={styles.metricSub}>{selectedBus?.vehicle_registration || 'Not reported'}</Text>
             </View>
-            <View style={styles.metricCard}>
-              <Text style={styles.metricLabel}>CROWDING</Text>
-              <Text style={styles.metricVal}>{selectedBus?.crowding_level || '—'}</Text>
-              <Text style={styles.metricSub}>{selectedBus ? new Date(selectedBus.updated_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Waiting for bus'}</Text>
-            </View>
+            <TouchableOpacity
+              style={styles.metricCard}
+              activeOpacity={0.75}
+              disabled={!selectedBus && !requestedBusNumber}
+              onPress={() => {
+                  const routeNumber =
+                      selectedBus?.bus_number ?? requestedBusNumber;
+
+                  if (!routeNumber) return;
+
+                  router.push({
+                    pathname: '/crowding',
+                    params: { routeNumber: String(routeNumber) },
+             });
+          }}
+            accessibilityRole="button"
+            accessibilityLabel="View detailed crowding information"
+          >
+            <Text style={styles.metricLabel}>CROWDING</Text>
+
+            <Text style={styles.metricVal}>
+             {selectedBus?.crowding_level || '—'}
+            </Text>
+
+            <Text style={styles.metricSub}>
+              Tap to view details ›
+            </Text>
+          </TouchableOpacity>
           </View>
 
           <View style={styles.crowdBar}>
