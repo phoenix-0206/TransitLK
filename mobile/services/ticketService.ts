@@ -17,15 +17,10 @@ export type TicketScanMethod =
 
 export type TicketValidationResult = {
   valid: boolean;
-
   result: TicketValidationStatus;
-
   message: string;
-
   reason?: string;
-
   ticket: Record<string, any> | null;
-
   scanLogged: boolean;
 };
 
@@ -34,7 +29,7 @@ export type TicketValidationResult = {
 // ======================================================
 
 async function logTicketScan(
-  ticketId: string,
+  ticketId: string | null,
   scanResult: TicketValidationStatus,
   scanMethod: TicketScanMethod,
   notes?: string,
@@ -46,16 +41,11 @@ async function logTicketScan(
       .from('ticket_scans')
       .insert({
         ticket_id: ticketId,
-
         scan_result: scanResult,
-
         scan_method: scanMethod,
-
         terminal_id: 'CONDUCTOR_APP',
-
         scanned_at:
           new Date().toISOString(),
-
         notes:
           notes ?? null,
       });
@@ -101,6 +91,14 @@ export async function validateTicket(
   // ====================================================
 
   if (!token) {
+    const scanLogged =
+      await logTicketScan(
+        null,
+        'INVALID',
+        scanMethod,
+        'Empty or unreadable ticket token.',
+      );
+
     return {
       valid: false,
       result: 'INVALID',
@@ -108,64 +106,152 @@ export async function validateTicket(
       reason:
         'Ticket ID is empty.',
       ticket: null,
-      scanLogged: false,
+      scanLogged,
     };
   }
 
   // Parse QR JSON payload if present
-  let parsedJsonTicket: Record<string, any> | null = null;
+
+  let parsedJsonTicket:
+    | Record<string, any>
+    | null = null;
+
   let tokenToQuery = token;
 
-  if (token.startsWith('{') && token.endsWith('}')) {
+  if (
+    token.startsWith('{') &&
+    token.endsWith('}')
+  ) {
     try {
-      parsedJsonTicket = JSON.parse(token);
+      parsedJsonTicket =
+        JSON.parse(token);
+
       tokenToQuery =
         parsedJsonTicket?.ticket_token ||
         parsedJsonTicket?.ticket_number ||
         parsedJsonTicket?.token ||
         token;
     } catch (err) {
-      console.warn('Could not parse ticket JSON:', err);
+      console.warn(
+        'Could not parse ticket JSON:',
+        err,
+      );
     }
   }
 
-  // Check duplicate scan cache in AsyncStorage
+  // ====================================================
+  // CHECK DUPLICATE SCAN CACHE
+  // ====================================================
+
   try {
-    const usedRaw = await AsyncStorage.getItem('transitlk_used_tokens');
-    const usedTokens = usedRaw ? JSON.parse(usedRaw) : [];
-    if (usedTokens.includes(tokenToQuery)) {
-      const fallback = parsedJsonTicket || {
-        ticket_token: tokenToQuery,
-        ticket_number: tokenToQuery,
-        status: 'USED',
-      };
+    const usedRaw =
+      await AsyncStorage.getItem(
+        'transitlk_used_tokens',
+      );
+
+    const usedTokens =
+      usedRaw
+        ? JSON.parse(usedRaw)
+        : [];
+
+    if (
+      usedTokens.includes(
+        tokenToQuery,
+      )
+    ) {
+      let duplicateTicket:
+        | Record<string, any>
+        | null = null;
+
+      try {
+        const {
+          data,
+          error,
+        } = await supabase
+          .from('tickets')
+          .select('*')
+          .eq(
+            'ticket_token',
+            tokenToQuery,
+          )
+          .maybeSingle();
+
+        if (
+          !error &&
+          data
+        ) {
+          duplicateTicket =
+            data;
+        }
+      } catch (error) {
+        console.warn(
+          'Duplicate ticket lookup error:',
+          error,
+        );
+      }
+
+      const fallback =
+        duplicateTicket ||
+        parsedJsonTicket || {
+          ticket_token:
+            tokenToQuery,
+          ticket_number:
+            tokenToQuery,
+          status: 'USED',
+        };
+
+      const scanLogged =
+        await logTicketScan(
+          duplicateTicket?.id ?? null,
+          'ALREADY_USED',
+          scanMethod,
+          'Duplicate scan. Ticket was already used.',
+        );
+
       return {
         valid: false,
         result: 'ALREADY_USED',
-        message: 'Ticket Already Used',
-        reason: 'This digital ticket has already been validated and cannot be used again.',
+        message:
+          'Ticket Already Used',
+        reason:
+          'This digital ticket has already been validated and cannot be used again.',
         ticket: fallback,
-        scanLogged: false,
+        scanLogged,
       };
     }
   } catch (err) {
-    console.warn('Used tokens cache check error:', err);
+    console.warn(
+      'Used tokens cache check error:',
+      err,
+    );
   }
 
   try {
     // ==================================================
     // 1. FIND TICKET IN SUPABASE
     // ==================================================
-    let ticket: Record<string, any> | null = null;
+
+    let ticket:
+      | Record<string, any>
+      | null = null;
 
     try {
-      const { data, error } = await supabase
+      const {
+        data,
+        error,
+      } = await supabase
         .from('tickets')
         .select('*')
-        .eq('ticket_token', tokenToQuery)
+        .eq(
+          'ticket_token',
+          tokenToQuery,
+        )
         .maybeSingle();
 
-      if (!error && data) {
+      if (
+        !error &&
+        data
+      ) {
         ticket = data;
       }
     } catch {
@@ -175,46 +261,71 @@ export async function validateTicket(
     // ==================================================
     // 2. FALLBACK: FIND TICKET IN ASYNCSTORAGE
     // ==================================================
+
     if (!ticket) {
       try {
-        const stored = await AsyncStorage.getItem('transitlk_tickets');
+        const stored =
+          await AsyncStorage.getItem(
+            'transitlk_tickets',
+          );
+
         if (stored) {
-          const list = JSON.parse(stored);
-          if (Array.isArray(list)) {
-            const found = list.find(
-              (item: any) =>
-                item.ticket_token === tokenToQuery ||
-                item.ticket_number === tokenToQuery ||
-                item.bookingRef === tokenToQuery,
-            );
+          const list =
+            JSON.parse(stored);
+
+          if (
+            Array.isArray(
+              list,
+            )
+          ) {
+            const found =
+              list.find(
+                (
+                  item: any,
+                ) =>
+                  item.ticket_token ===
+                    tokenToQuery ||
+                  item.ticket_number ===
+                    tokenToQuery ||
+                  item.bookingRef ===
+                    tokenToQuery,
+              );
+
             if (found) {
               ticket = found;
             }
           }
         }
       } catch (err) {
-        console.warn('AsyncStorage lookup error:', err);
+        console.warn(
+          'AsyncStorage lookup error:',
+          err,
+        );
       }
-    }
-
-    // ==================================================
-    // 3. FALLBACK: USE PARSED QR JSON PAYLOAD
-    // ==================================================
-    if (!ticket && parsedJsonTicket) {
-      ticket = parsedJsonTicket;
     }
 
     // ==================================================
     // TICKET NOT FOUND
     // ==================================================
+
     if (!ticket) {
+      const scanLogged =
+        await logTicketScan(
+          null,
+          'INVALID',
+          scanMethod,
+          `Unknown QR token: ${tokenToQuery}`,
+        );
+
       return {
         valid: false,
         result: 'INVALID',
-        message: 'Invalid Ticket',
-        reason: 'No ticket was found for this QR code.',
+        message:
+          'Invalid Ticket',
+        reason:
+          'No ticket was found for this QR code.',
         ticket: null,
-        scanLogged: false,
+        scanLogged,
       };
     }
 
@@ -222,16 +333,18 @@ export async function validateTicket(
     // NORMALIZE VALUES
     // ==================================================
 
-    const status = String(
-      ticket.status ?? '',
-    )
-      .trim()
-      .toLowerCase();
+    const status =
+      String(
+        ticket.status ??
+          '',
+      )
+        .trim()
+        .toLowerCase();
 
     const paymentStatus =
       String(
         ticket.payment_status ??
-        '',
+          '',
       )
         .trim()
         .toLowerCase();
@@ -256,33 +369,26 @@ export async function validateTicket(
     // ==================================================
 
     if (
-      status === 'used'
+      status ===
+      'used'
     ) {
       const scanLogged =
         await logTicketScan(
           ticket.id,
-
           'ALREADY_USED',
-
           scanMethod,
-
           'Duplicate scan. Ticket was already used.',
         );
 
       return {
         valid: false,
-
         result:
           'ALREADY_USED',
-
         message:
           'Ticket Already Used',
-
         reason:
           'This ticket has already been validated and cannot be used again.',
-
         ticket,
-
         scanLogged,
       };
     }
@@ -293,33 +399,26 @@ export async function validateTicket(
 
     if (
       status ===
-      'cancelled' ||
-      status === 'canceled'
+        'cancelled' ||
+      status ===
+        'canceled'
     ) {
       const scanLogged =
         await logTicketScan(
           ticket.id,
-
           'INVALID',
-
           scanMethod,
-
           'Ticket is cancelled.',
         );
 
       return {
         valid: false,
-
         result: 'INVALID',
-
         message:
           'Invalid Ticket',
-
         reason:
           'This ticket has been cancelled.',
-
         ticket,
-
         scanLogged,
       };
     }
@@ -329,32 +428,25 @@ export async function validateTicket(
     // ==================================================
 
     if (
-      status === 'rejected'
+      status ===
+      'rejected'
     ) {
       const scanLogged =
         await logTicketScan(
           ticket.id,
-
           'INVALID',
-
           scanMethod,
-
           'Ticket is rejected.',
         );
 
       return {
         valid: false,
-
         result: 'INVALID',
-
         message:
           'Ticket Rejected',
-
         reason:
           'This ticket has been rejected.',
-
         ticket,
-
         scanLogged,
       };
     }
@@ -364,32 +456,25 @@ export async function validateTicket(
     // ==================================================
 
     if (
-      status === 'invalid'
+      status ===
+      'invalid'
     ) {
       const scanLogged =
         await logTicketScan(
           ticket.id,
-
           'INVALID',
-
           scanMethod,
-
           'Ticket status is invalid.',
         );
 
       return {
         valid: false,
-
         result: 'INVALID',
-
         message:
           'Invalid Ticket',
-
         reason:
           'This ticket is marked as invalid.',
-
         ticket,
-
         scanLogged,
       };
     }
@@ -399,32 +484,25 @@ export async function validateTicket(
     // ==================================================
 
     if (
-      status === 'expired'
+      status ===
+      'expired'
     ) {
       const scanLogged =
         await logTicketScan(
           ticket.id,
-
           'INVALID',
-
           scanMethod,
-
           'Ticket status is expired.',
         );
 
       return {
         valid: false,
-
         result: 'INVALID',
-
         message:
           'Ticket Expired',
-
         reason:
           'This ticket has expired and cannot be accepted.',
-
         ticket,
-
         scanLogged,
       };
     }
@@ -451,27 +529,19 @@ export async function validateTicket(
       const scanLogged =
         await logTicketScan(
           ticket.id,
-
           'INVALID',
-
           scanMethod,
-
           `Invalid payment status: ${ticket.payment_status}`,
         );
 
       return {
         valid: false,
-
         result: 'INVALID',
-
         message:
           'Payment Not Valid',
-
         reason:
           `Ticket payment status is ${ticket.payment_status}.`,
-
         ticket,
-
         scanLogged,
       };
     }
@@ -496,32 +566,24 @@ export async function validateTicket(
           validUntil.getTime(),
         ) &&
         validUntil.getTime() <
-        now.getTime()
+          now.getTime()
       ) {
         const scanLogged =
           await logTicketScan(
             ticket.id,
-
             'INVALID',
-
             scanMethod,
-
             `Ticket expired at ${ticket.valid_until}`,
           );
 
         return {
           valid: false,
-
           result: 'INVALID',
-
           message:
             'Ticket Expired',
-
           reason:
             'The validity period of this ticket has expired.',
-
           ticket,
-
           scanLogged,
         };
       }
@@ -531,59 +593,141 @@ export async function validateTicket(
     // MARK TICKET AS USED
     // ==================================================
 
-    // 1. If ticket is in Supabase with an id, update Supabase
-    let updatedTicket: Record<string, any> | null = null;
-    let updateError: any = null;
+    let updatedTicket:
+      | Record<string, any>
+      | null = null;
 
-    if (ticket.id && typeof ticket.id === 'string' && ticket.id.length > 20) {
-      const res = await supabase
-        .from('tickets')
-        .update({
-          status: 'USED',
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', ticket.id)
-        .neq('status', 'used')
-        .select('*')
-        .maybeSingle();
-      updatedTicket = res.data;
-      updateError = res.error;
+    let updateError:
+      any = null;
+
+    if (
+      ticket.id &&
+      typeof ticket.id ===
+        'string' &&
+      ticket.id.length >
+        20
+    ) {
+      const res =
+        await supabase
+          .from('tickets')
+          .update({
+            status: 'USED',
+            updated_at:
+              new Date().toISOString(),
+          })
+          .eq(
+            'id',
+            ticket.id,
+          )
+          .neq(
+            'status',
+            'used',
+          )
+          .select('*')
+          .maybeSingle();
+
+      updatedTicket =
+        res.data;
+
+      updateError =
+        res.error;
     }
 
-    // 2. Mark in local AsyncStorage used tokens and list
+    // Mark in local AsyncStorage used tokens and list
+
     try {
-      const usedRaw = await AsyncStorage.getItem('transitlk_used_tokens');
-      const usedTokens = usedRaw ? JSON.parse(usedRaw) : [];
-      if (!usedTokens.includes(tokenToQuery)) {
-        usedTokens.push(tokenToQuery);
-        await AsyncStorage.setItem('transitlk_used_tokens', JSON.stringify(usedTokens));
+      const usedRaw =
+        await AsyncStorage.getItem(
+          'transitlk_used_tokens',
+        );
+
+      const usedTokens =
+        usedRaw
+          ? JSON.parse(
+              usedRaw,
+            )
+          : [];
+
+      if (
+        !usedTokens.includes(
+          tokenToQuery,
+        )
+      ) {
+        usedTokens.push(
+          tokenToQuery,
+        );
+
+        await AsyncStorage.setItem(
+          'transitlk_used_tokens',
+          JSON.stringify(
+            usedTokens,
+          ),
+        );
       }
 
-      const storedRaw = await AsyncStorage.getItem('transitlk_tickets');
+      const storedRaw =
+        await AsyncStorage.getItem(
+          'transitlk_tickets',
+        );
+
       if (storedRaw) {
-        const list = JSON.parse(storedRaw);
-        if (Array.isArray(list)) {
-          const idx = list.findIndex(
-            (t: any) =>
-              t.ticket_token === tokenToQuery ||
-              t.ticket_number === tokenToQuery,
+        const list =
+          JSON.parse(
+            storedRaw,
           );
-          if (idx >= 0) {
-            list[idx].status = 'USED';
-            await AsyncStorage.setItem('transitlk_tickets', JSON.stringify(list));
+
+        if (
+          Array.isArray(
+            list,
+          )
+        ) {
+          const idx =
+            list.findIndex(
+              (
+                t: any,
+              ) =>
+                t.ticket_token ===
+                  tokenToQuery ||
+                t.ticket_number ===
+                  tokenToQuery,
+            );
+
+          if (
+            idx >=
+            0
+          ) {
+            list[
+              idx
+            ].status =
+              'USED';
+
+            await AsyncStorage.setItem(
+              'transitlk_tickets',
+              JSON.stringify(
+                list,
+              ),
+            );
           }
         }
       }
     } catch (e) {
-      console.warn('AsyncStorage update error:', e);
+      console.warn(
+        'AsyncStorage update error:',
+        e,
+      );
     }
 
-    if (!updatedTicket && !updateError) {
+    if (
+      !updatedTicket &&
+      !updateError
+    ) {
       updatedTicket = {
         ...ticket,
         status: 'USED',
-        payment_status: 'PAID',
-        updated_at: new Date().toISOString(),
+        payment_status:
+          'PAID',
+        updated_at:
+          new Date().toISOString(),
       };
     }
 
@@ -600,27 +744,19 @@ export async function validateTicket(
       const scanLogged =
         await logTicketScan(
           ticket.id,
-
           'ERROR',
-
           scanMethod,
-
           `Ticket update failed: ${updateError.message}`,
         );
 
       return {
         valid: false,
-
         result: 'ERROR',
-
         message:
           'Validation Failed',
-
         reason:
           `Ticket was found but could not be marked as used: ${updateError.message}`,
-
         ticket,
-
         scanLogged,
       };
     }
@@ -629,46 +765,41 @@ export async function validateTicket(
     // POSSIBLE DUPLICATE / CONCURRENT SCAN
     // ==================================================
 
-    if (!updatedTicket) {
+    if (
+      !updatedTicket
+    ) {
       const {
         data:
-        latestTicket,
-      } = await supabase
-        .from('tickets')
-        .select('*')
-        .eq(
-          'id',
-          ticket.id,
-        )
-        .maybeSingle();
+          latestTicket,
+      } =
+        await supabase
+          .from('tickets')
+          .select('*')
+          .eq(
+            'id',
+            ticket.id,
+          )
+          .maybeSingle();
 
       const scanLogged =
         await logTicketScan(
           ticket.id,
-
           'ALREADY_USED',
-
           scanMethod,
-
           'Ticket was already validated by another scan.',
         );
 
       return {
         valid: false,
-
         result:
           'ALREADY_USED',
-
         message:
           'Ticket Already Used',
-
         reason:
           'This ticket has already been validated.',
-
         ticket:
           latestTicket ??
           ticket,
-
         scanLogged,
       };
     }
@@ -680,11 +811,8 @@ export async function validateTicket(
     const scanLogged =
       await logTicketScan(
         ticket.id,
-
         'VALID',
-
         scanMethod,
-
         'Ticket successfully validated.',
       );
 
@@ -699,18 +827,13 @@ export async function validateTicket(
 
     return {
       valid: true,
-
       result: 'VALID',
-
       message:
         'Valid Ticket',
-
       reason:
         'Ticket successfully validated and marked as used.',
-
       ticket:
         updatedTicket,
-
       scanLogged,
     };
   } catch (error) {
@@ -721,19 +844,14 @@ export async function validateTicket(
 
     return {
       valid: false,
-
       result: 'ERROR',
-
       message:
         'Validation Failed',
-
       reason:
         error instanceof Error
           ? error.message
           : 'Unknown validation error.',
-
       ticket: null,
-
       scanLogged: false,
     };
   }
@@ -744,8 +862,14 @@ export async function validateTicket(
 // ======================================================
 
 export interface CreateTicketInput {
-  passengerId?: string | null;
-  scheduleId?: string | null;
+  passengerId?:
+    | string
+    | null;
+
+  scheduleId?:
+    | string
+    | null;
+
   ticketNumber?: string;
   ticketToken?: string;
   ticketType?: string;
@@ -759,39 +883,70 @@ export interface CreateTicketInput {
   departureTime?: string;
   arrivalTime?: string;
   travelDate?: string;
-  passengerCount?: string | number;
-  passengerDetails?: string;
+
+  passengerCount?:
+    | string
+    | number;
+
+  passengerDetails?:
+    string;
+
   paymentMethod?: string;
 }
 
 export interface TicketRecord {
   id?: string;
-  passenger_id?: string | null;
-  schedule_id?: string | null;
+
+  passenger_id?:
+    | string
+    | null;
+
+  schedule_id?:
+    | string
+    | null;
+
   ticket_number: string;
   ticket_token: string;
   ticket_type: string;
   fare: number;
+
   boarding_point?: string;
   seat_number?: string;
+
   status: string;
-  payment_status: string;
-  purchased_at: string;
+
+  payment_status:
+    string;
+
+  purchased_at:
+    string;
+
   valid_until?: string;
   created_at?: string;
   updated_at?: string;
+
   route_number?: string;
   service_name?: string;
+
   origin?: string;
   origin_name?: string;
+
   destination?: string;
   destination_name?: string;
+
   departure_time?: string;
   arrival_time?: string;
+
   travel_date?: string;
-  passenger_count?: string | number;
+
+  passenger_count?:
+    | string
+    | number;
+
   passenger_type?: string;
+
   payment_method?: string;
+
   bus_schedules?: any;
 }
 
@@ -799,241 +954,684 @@ export interface TicketRecord {
  * Creates a digital ticket and inserts it directly into the Supabase `tickets` table,
  * while saving to AsyncStorage as local backup.
  */
+
 export async function createTicket(
   input: CreateTicketInput,
-): Promise<{ success: boolean; ticket: TicketRecord; error?: string }> {
-  const randomSuffix = Math.floor(100000 + Math.random() * 900000);
-  const ticketNumber = input.ticketNumber || `TLK-${randomSuffix}`;
-  const ticketToken = input.ticketToken || `TLK-2026-${Math.floor(1000 + Math.random() * 9000)}-B`;
-  const purchasedAt = new Date().toISOString();
-  const validUntil = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+): Promise<{
+  success: boolean;
+  ticket: TicketRecord;
+  error?: string;
+}> {
+  const randomSuffix =
+    Math.floor(
+      100000 +
+        Math.random() *
+          900000,
+    );
+
+  const ticketNumber =
+    input.ticketNumber ||
+    `TLK-${randomSuffix}`;
+
+  const ticketToken =
+    input.ticketToken ||
+    `TLK-2026-${Math.floor(
+      1000 +
+        Math.random() *
+          9000,
+    )}-B`;
+
+  const purchasedAt =
+    new Date().toISOString();
+
+  const validUntil =
+    new Date(
+      Date.now() +
+        24 *
+          60 *
+          60 *
+          1000,
+    ).toISOString();
 
   // 1. Resolve passenger_id
-  let passengerId = input.passengerId || null;
+
+  let passengerId =
+    input.passengerId ||
+    null;
+
   if (!passengerId) {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user?.id) {
-        passengerId = user.id;
+      const {
+        data: {
+          user,
+        },
+      } =
+        await supabase.auth.getUser();
+
+      if (
+        user?.id
+      ) {
+        passengerId =
+          user.id;
       }
     } catch {
       // Continue
     }
   }
-  // Default to system passenger ID if unauthenticated to satisfy not-null constraint
+
+  // Default to system passenger ID if unauthenticated
+
   if (!passengerId) {
-    passengerId = '44736a01-a842-4506-8521-51137f85b2db';
+    passengerId =
+      '44736a01-a842-4506-8521-51137f85b2db';
   }
 
   // 2. Resolve schedule_id
-  let scheduleId = input.scheduleId || null;
-  if (!scheduleId && input.routeNumber) {
+
+  let scheduleId =
+    input.scheduleId ||
+    null;
+
+  if (
+    !scheduleId &&
+    input.routeNumber
+  ) {
     try {
-      const { data: matchedSchedule } = await supabase
-        .from('bus_schedules')
-        .select('id')
-        .eq('route_number', input.routeNumber)
-        .limit(1)
-        .maybeSingle();
-      if (matchedSchedule?.id) {
-        scheduleId = matchedSchedule.id;
+      const {
+        data:
+          matchedSchedule,
+      } =
+        await supabase
+          .from(
+            'bus_schedules',
+          )
+          .select(
+            'id',
+          )
+          .eq(
+            'route_number',
+            input.routeNumber,
+          )
+          .limit(
+            1,
+          )
+          .maybeSingle();
+
+      if (
+        matchedSchedule?.id
+      ) {
+        scheduleId =
+          matchedSchedule.id;
       }
     } catch {
       // Continue
     }
   }
 
-  // Fallback to first available bus schedule to satisfy foreign key if needed
+  // Fallback to first available bus schedule
+
   if (!scheduleId) {
     try {
-      const { data: anySchedule } = await supabase
-        .from('bus_schedules')
-        .select('id')
-        .limit(1)
-        .maybeSingle();
-      if (anySchedule?.id) {
-        scheduleId = anySchedule.id;
+      const {
+        data:
+          anySchedule,
+      } =
+        await supabase
+          .from(
+            'bus_schedules',
+          )
+          .select(
+            'id',
+          )
+          .limit(
+            1,
+          )
+          .maybeSingle();
+
+      if (
+        anySchedule?.id
+      ) {
+        scheduleId =
+          anySchedule.id;
       }
     } catch {
       // Continue
     }
   }
+
   if (!scheduleId) {
-    scheduleId = '6e752d17-a338-4ce5-a061-3bd74089acfe';
+    scheduleId =
+      '6e752d17-a338-4ce5-a061-3bd74089acfe';
   }
 
-  // 3. Full ticket record for UI/local storage
-  const fullTicketRecord: TicketRecord = {
-    passenger_id: passengerId,
-    schedule_id: scheduleId,
-    ticket_number: ticketNumber,
-    ticket_token: ticketToken,
-    ticket_type: input.ticketType || 'STANDARD',
-    fare: input.fare,
-    boarding_point: input.boardingPoint || input.originName || 'Colombo Fort',
-    seat_number: input.seatNumber || 'A1',
-    status: 'ACTIVE',
-    payment_status: 'PAID',
-    purchased_at: purchasedAt,
-    valid_until: validUntil,
-    created_at: purchasedAt,
-    updated_at: purchasedAt,
-    route_number: input.routeNumber || '138',
-    service_name: input.serviceName || 'SLTB Express',
-    origin: input.originName || 'Colombo Fort',
-    origin_name: input.originName || 'Colombo Fort',
-    destination: input.destinationName || 'Maharagama',
-    destination_name: input.destinationName || 'Maharagama',
-    departure_time: input.departureTime || '08:45 AM',
-    arrival_time: input.arrivalTime || '09:30 AM',
-    travel_date: input.travelDate || 'Today',
-    passenger_count: input.passengerCount || '1',
-    passenger_type: input.passengerDetails || '1 Adult',
-    payment_method: input.paymentMethod || 'Visa / LankaPay',
+  // 3. Full ticket record
+
+  const fullTicketRecord:
+    TicketRecord = {
+    passenger_id:
+      passengerId,
+
+    schedule_id:
+      scheduleId,
+
+    ticket_number:
+      ticketNumber,
+
+    ticket_token:
+      ticketToken,
+
+    ticket_type:
+      input.ticketType ||
+      'STANDARD',
+
+    fare:
+      input.fare,
+
+    boarding_point:
+      input.boardingPoint ||
+      input.originName ||
+      'Colombo Fort',
+
+    seat_number:
+      input.seatNumber ||
+      'A1',
+
+    status:
+      'ACTIVE',
+
+    payment_status:
+      'PAID',
+
+    purchased_at:
+      purchasedAt,
+
+    valid_until:
+      validUntil,
+
+    created_at:
+      purchasedAt,
+
+    updated_at:
+      purchasedAt,
+
+    route_number:
+      input.routeNumber ||
+      '138',
+
+    service_name:
+      input.serviceName ||
+      'SLTB Express',
+
+    origin:
+      input.originName ||
+      'Colombo Fort',
+
+    origin_name:
+      input.originName ||
+      'Colombo Fort',
+
+    destination:
+      input.destinationName ||
+      'Maharagama',
+
+    destination_name:
+      input.destinationName ||
+      'Maharagama',
+
+    departure_time:
+      input.departureTime ||
+      '08:45 AM',
+
+    arrival_time:
+      input.arrivalTime ||
+      '09:30 AM',
+
+    travel_date:
+      input.travelDate ||
+      'Today',
+
+    passenger_count:
+      input.passengerCount ||
+      '1',
+
+    passenger_type:
+      input.passengerDetails ||
+      '1 Adult',
+
+    payment_method:
+      input.paymentMethod ||
+      'Visa / LankaPay',
   };
 
-  // 4. Save into Supabase `tickets` table
-  let supabaseError: any = null;
+  // 4. Save into Supabase tickets table
+
+  let supabaseError:
+    any = null;
+
   try {
-    const supabasePayload: Record<string, any> = {
-      ticket_number: ticketNumber,
-      ticket_token: ticketToken,
-      ticket_type: input.ticketType || 'STANDARD',
-      fare: input.fare,
-      boarding_point: input.boardingPoint || input.originName || 'Colombo Fort',
-      seat_number: input.seatNumber || 'A1',
-      status: 'ACTIVE',
-      payment_status: 'PAID',
-      purchased_at: purchasedAt,
-      valid_until: validUntil,
-      passenger_id: passengerId,
-      schedule_id: scheduleId,
+    const supabasePayload:
+      Record<
+        string,
+        any
+      > = {
+      ticket_number:
+        ticketNumber,
+
+      ticket_token:
+        ticketToken,
+
+      ticket_type:
+        input.ticketType ||
+        'STANDARD',
+
+      fare:
+        input.fare,
+
+      boarding_point:
+        input.boardingPoint ||
+        input.originName ||
+        'Colombo Fort',
+
+      seat_number:
+        input.seatNumber ||
+        'A1',
+
+      status:
+        'ACTIVE',
+
+      payment_status:
+        'PAID',
+
+      purchased_at:
+        purchasedAt,
+
+      valid_until:
+        validUntil,
+
+      passenger_id:
+        passengerId,
+
+      schedule_id:
+        scheduleId,
     };
 
-    const res = await supabase
-      .from('tickets')
-      .insert(supabasePayload)
-      .select('*')
-      .maybeSingle();
+    const res =
+      await supabase
+        .from(
+          'tickets',
+        )
+        .insert(
+          supabasePayload,
+        )
+        .select('*')
+        .maybeSingle();
 
-    if (res.error) {
-      supabaseError = res.error;
-      console.warn('Supabase ticket insert error:', res.error);
-    } else if (res.data) {
-      fullTicketRecord.id = res.data.id;
-      console.log('Successfully recorded ticket in Supabase tickets table:', res.data.id);
+    if (
+      res.error
+    ) {
+      supabaseError =
+        res.error;
+
+      console.warn(
+        'Supabase ticket insert error:',
+        res.error,
+      );
+    } else if (
+      res.data
+    ) {
+      fullTicketRecord.id =
+        res.data.id;
+
+      console.log(
+        'Successfully recorded ticket in Supabase tickets table:',
+        res.data.id,
+      );
     }
-  } catch (err: any) {
-    supabaseError = err;
-    console.warn('Supabase ticket insert exception:', err);
+  } catch (
+    err: any
+  ) {
+    supabaseError =
+      err;
+
+    console.warn(
+      'Supabase ticket insert exception:',
+      err,
+    );
   }
 
-  // 5. Also record notification in Supabase `notifications` table
+  // 5. Notification
+
   try {
-    await supabase.from('notifications').insert({
-      title: `Ticket Booked: ${ticketNumber}`,
-      message: `Your booking for Route ${input.routeNumber || 'Bus'} (${input.originName || 'Origin'} to ${input.destinationName || 'Destination'}) is confirmed. Fare: LKR ${Number(input.fare).toFixed(2)}.`,
-      type: 'ticket',
-      route_number: input.routeNumber || 'Bus',
-      is_read: false,
-      is_active: true,
-    });
+    await supabase
+      .from(
+        'notifications',
+      )
+      .insert({
+        title:
+          `Ticket Booked: ${ticketNumber}`,
+
+        message:
+          `Your booking for Route ${input.routeNumber || 'Bus'} (${input.originName || 'Origin'} to ${input.destinationName || 'Destination'}) is confirmed. Fare: LKR ${Number(input.fare).toFixed(2)}.`,
+
+        type:
+          'ticket',
+
+        route_number:
+          input.routeNumber ||
+          'Bus',
+
+        is_read:
+          false,
+
+        is_active:
+          true,
+      });
   } catch {
     // Continue
   }
 
-  // 6. Save to local storage as backup
+  // 6. Save local backup
+
   try {
-    const existingRaw = await AsyncStorage.getItem('transitlk_tickets');
-    const list: TicketRecord[] = existingRaw ? JSON.parse(existingRaw) : [];
-    const existingIdx = list.findIndex(
-      (item) => item.ticket_token === ticketToken || item.ticket_number === ticketNumber,
-    );
-    if (existingIdx >= 0) {
-      list[existingIdx] = fullTicketRecord;
+    const existingRaw =
+      await AsyncStorage.getItem(
+        'transitlk_tickets',
+      );
+
+    const list:
+      TicketRecord[] =
+      existingRaw
+        ? JSON.parse(
+            existingRaw,
+          )
+        : [];
+
+    const existingIdx =
+      list.findIndex(
+        (
+          item,
+        ) =>
+          item.ticket_token ===
+            ticketToken ||
+          item.ticket_number ===
+            ticketNumber,
+      );
+
+    if (
+      existingIdx >=
+      0
+    ) {
+      list[
+        existingIdx
+      ] =
+        fullTicketRecord;
     } else {
-      list.unshift(fullTicketRecord);
+      list.unshift(
+        fullTicketRecord,
+      );
     }
-    await AsyncStorage.setItem('transitlk_tickets', JSON.stringify(list.slice(0, 50)));
+
+    await AsyncStorage.setItem(
+      'transitlk_tickets',
+      JSON.stringify(
+        list.slice(
+          0,
+          50,
+        ),
+      ),
+    );
   } catch {
     // Continue
   }
 
   return {
-    success: !supabaseError,
-    ticket: fullTicketRecord,
-    error: supabaseError ? supabaseError.message || String(supabaseError) : undefined,
+    success:
+      !supabaseError,
+
+    ticket:
+      fullTicketRecord,
+
+    error:
+      supabaseError
+        ? supabaseError.message ||
+          String(
+            supabaseError,
+          )
+        : undefined,
   };
 }
 
 /**
  * Fetches passenger tickets from Supabase tickets table.
  */
+
 export async function getPassengerTickets(
-  passengerId?: string | null,
-): Promise<TicketRecord[]> {
-  const localMap = new Map<string, TicketRecord>();
+  passengerId?:
+    | string
+    | null,
+): Promise<
+  TicketRecord[]
+> {
+  const localMap =
+    new Map<
+      string,
+      TicketRecord
+    >();
 
   // 1. Read local cache
+
   try {
-    const raw = await AsyncStorage.getItem('transitlk_tickets');
+    const raw =
+      await AsyncStorage.getItem(
+        'transitlk_tickets',
+      );
+
     if (raw) {
-      const parsed: TicketRecord[] = JSON.parse(raw);
-      if (Array.isArray(parsed)) {
-        parsed.forEach((t) => {
-          if (t.ticket_token) localMap.set(t.ticket_token, t);
-          else if (t.ticket_number) localMap.set(t.ticket_number, t);
-        });
+      const parsed:
+        TicketRecord[] =
+        JSON.parse(
+          raw,
+        );
+
+      if (
+        Array.isArray(
+          parsed,
+        )
+      ) {
+        parsed.forEach(
+          (
+            t,
+          ) => {
+            if (
+              t.ticket_token
+            ) {
+              localMap.set(
+                t.ticket_token,
+                t,
+              );
+            } else if (
+              t.ticket_number
+            ) {
+              localMap.set(
+                t.ticket_number,
+                t,
+              );
+            }
+          },
+        );
       }
     }
   } catch {
     // Continue
   }
 
-  // 2. Fetch from Supabase tickets table
-  try {
-    let query = supabase
-      .from('tickets')
-      .select('*, bus_schedules(*)')
-      .order('created_at', { ascending: false });
+  // 2. Fetch from Supabase
 
-    if (passengerId) {
-      query = query.eq('passenger_id', passengerId);
+  try {
+    let query =
+      supabase
+        .from(
+          'tickets',
+        )
+        .select(
+          '*, bus_schedules(*)',
+        )
+        .order(
+          'created_at',
+          {
+            ascending:
+              false,
+          },
+        );
+
+    if (
+      passengerId
+    ) {
+      query =
+        query.eq(
+          'passenger_id',
+          passengerId,
+        );
     }
 
-    const { data, error } = await query;
-    if (!error && Array.isArray(data)) {
-      data.forEach((row: any) => {
-        const key = row.ticket_token || row.ticket_number || row.id;
-        const local = localMap.get(key);
-        const sched = row.bus_schedules;
+    const {
+      data,
+      error,
+    } =
+      await query;
 
-        const merged: TicketRecord = {
-          ...row,
-          route_number: sched?.route_number || local?.route_number || 'Bus',
-          origin: sched?.origin || local?.origin || row.boarding_point || 'Colombo',
-          origin_name: sched?.origin || local?.origin_name || row.boarding_point || 'Colombo',
-          destination: sched?.destination || local?.destination || 'Destination',
-          destination_name: sched?.destination || local?.destination_name || 'Destination',
-          departure_time: sched?.departure_time || local?.departure_time || 'Scheduled',
-          arrival_time: sched?.arrival_time || local?.arrival_time || '',
-          service_name: sched?.transport_type || local?.service_name || 'TransitLK Bus',
-          travel_date: local?.travel_date || new Date(row.created_at || row.purchased_at || Date.now()).toLocaleDateString(),
-          fare: Number(row.fare) || local?.fare || 0,
-          status: row.status || local?.status || 'VALID',
-          payment_status: row.payment_status || local?.payment_status || 'PAID',
-        };
+    if (
+      !error &&
+      Array.isArray(
+        data,
+      )
+    ) {
+      data.forEach(
+        (
+          row: any,
+        ) => {
+          const key =
+            row.ticket_token ||
+            row.ticket_number ||
+            row.id;
 
-        localMap.set(key, merged);
-      });
+          const local =
+            localMap.get(
+              key,
+            );
+
+          const sched =
+            row.bus_schedules;
+
+          const merged:
+            TicketRecord =
+            {
+              ...row,
+
+              route_number:
+                sched?.route_number ||
+                local?.route_number ||
+                'Bus',
+
+              origin:
+                sched?.origin ||
+                local?.origin ||
+                row.boarding_point ||
+                'Colombo',
+
+              origin_name:
+                sched?.origin ||
+                local?.origin_name ||
+                row.boarding_point ||
+                'Colombo',
+
+              destination:
+                sched?.destination ||
+                local?.destination ||
+                'Destination',
+
+              destination_name:
+                sched?.destination ||
+                local?.destination_name ||
+                'Destination',
+
+              departure_time:
+                sched?.departure_time ||
+                local?.departure_time ||
+                'Scheduled',
+
+              arrival_time:
+                sched?.arrival_time ||
+                local?.arrival_time ||
+                '',
+
+              service_name:
+                sched?.transport_type ||
+                local?.service_name ||
+                'TransitLK Bus',
+
+              travel_date:
+                local?.travel_date ||
+                new Date(
+                  row.created_at ||
+                    row.purchased_at ||
+                    Date.now(),
+                ).toLocaleDateString(),
+
+              fare:
+                Number(
+                  row.fare,
+                ) ||
+                local?.fare ||
+                0,
+
+              status:
+                row.status ||
+                local?.status ||
+                'VALID',
+
+              payment_status:
+                row.payment_status ||
+                local?.payment_status ||
+                'PAID',
+            };
+
+          localMap.set(
+            key,
+            merged,
+          );
+        },
+      );
     }
   } catch {
     // Continue
   }
 
-  return Array.from(localMap.values()).sort((a, b) => {
-    const tA = new Date(a.created_at || a.purchased_at || 0).getTime();
-    const tB = new Date(b.created_at || b.purchased_at || 0).getTime();
-    return tB - tA;
-  });
+  return Array.from(
+    localMap.values(),
+  ).sort(
+    (
+      a,
+      b,
+    ) => {
+      const tA =
+        new Date(
+          a.created_at ||
+            a.purchased_at ||
+            0,
+        ).getTime();
+
+      const tB =
+        new Date(
+          b.created_at ||
+            b.purchased_at ||
+            0,
+        ).getTime();
+
+      return (
+        tB -
+        tA
+      );
+    },
+  );
 }

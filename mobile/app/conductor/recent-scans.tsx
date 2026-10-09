@@ -6,6 +6,7 @@ import React, {
 
 import {
   ActivityIndicator,
+  Alert,
   Pressable,
   RefreshControl,
   SafeAreaView,
@@ -64,24 +65,13 @@ export default function RecentScansScreen() {
     useState('');
 
   // ====================================================
-  // FETCH TODAY'S SCANS
+  // FETCH ALL SCANS
   // ====================================================
 
   const fetchScans =
     useCallback(async () => {
       try {
         setErrorMessage('');
-
-        // Start of today using device local time
-        const startOfToday =
-          new Date();
-
-        startOfToday.setHours(
-          0,
-          0,
-          0,
-          0,
-        );
 
         const {
           data,
@@ -102,10 +92,6 @@ export default function RecentScansScreen() {
               ticket_token
             )
           `)
-          .gte(
-            'scanned_at',
-            startOfToday.toISOString(),
-          )
           .order(
             'scanned_at',
             {
@@ -167,6 +153,121 @@ export default function RecentScansScreen() {
   }
 
   // ====================================================
+  // UPDATE SCAN
+  // ====================================================
+
+  async function handleMarkReviewed(
+    scanId: string,
+  ) {
+    try {
+      const { error } = await supabase
+        .from('ticket_scans')
+        .update({
+          notes: 'Reviewed by conductor',
+        })
+        .eq('id', scanId);
+
+      if (error) {
+        Alert.alert(
+          'Update Failed',
+          error.message,
+        );
+
+        return;
+      }
+
+      Alert.alert(
+        'Updated',
+        'Scan marked as reviewed.',
+      );
+
+      fetchScans();
+    } catch (error) {
+      console.error(
+        'Update scan error:',
+        error,
+      );
+
+      Alert.alert(
+        'Update Failed',
+        'Unable to update scan.',
+      );
+    }
+  }
+
+  // ====================================================
+  // DELETE SCAN
+  // ====================================================
+
+  function handleDeleteScan(
+    scanId: string,
+  ) {
+    Alert.alert(
+      'Delete Scan',
+      'Are you sure you want to delete this scan record?',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Delete',
+          style: 'destructive',
+
+          onPress: async () => {
+            try {
+              const { error } =
+                await supabase
+                  .from('ticket_scans')
+                  .delete()
+                  .eq('id', scanId);
+
+              if (error) {
+                console.error(
+                  'Delete scan error:',
+                  error,
+                );
+
+                Alert.alert(
+                  'Delete Failed',
+                  error.message,
+                );
+
+                return;
+              }
+
+              // Remove immediately from screen
+              setScans(
+                currentScans =>
+                  currentScans.filter(
+                    scan =>
+                      scan.id !==
+                      scanId,
+                  ),
+              );
+
+              Alert.alert(
+                'Deleted',
+                'Scan record deleted successfully.',
+              );
+            } catch (error) {
+              console.error(
+                'Delete scan error:',
+                error,
+              );
+
+              Alert.alert(
+                'Delete Failed',
+                'Unable to delete scan.',
+              );
+            }
+          },
+        },
+      ],
+    );
+  }
+
+  // ====================================================
   // STATISTICS
   // ====================================================
 
@@ -175,7 +276,9 @@ export default function RecentScansScreen() {
       (scan) =>
         String(
           scan.scan_result,
-        ).toUpperCase() ===
+        )
+          .trim()
+          .toUpperCase() ===
         'VALID',
     ).length;
 
@@ -336,9 +439,7 @@ export default function RecentScansScreen() {
           />
         }
       >
-        {/* ============================================= */}
         {/* HEADER */}
-        {/* ============================================= */}
 
         <View
           style={styles.header}
@@ -361,7 +462,7 @@ export default function RecentScansScreen() {
                 styles.subtitle
               }
             >
-              Today's ticket
+              All ticket
               validation history
             </Text>
           </View>
@@ -381,9 +482,7 @@ export default function RecentScansScreen() {
           </View>
         </View>
 
-        {/* ============================================= */}
         {/* STATISTICS */}
-        {/* ============================================= */}
 
         <View
           style={
@@ -406,7 +505,7 @@ export default function RecentScansScreen() {
                 styles.statLabel
               }
             >
-              Today's Scans
+              All Scans
             </Text>
           </View>
 
@@ -461,9 +560,7 @@ export default function RecentScansScreen() {
           </View>
         </View>
 
-        {/* ============================================= */}
         {/* SECTION HEADER */}
-        {/* ============================================= */}
 
         <View
           style={
@@ -475,7 +572,7 @@ export default function RecentScansScreen() {
               styles.sectionTitle
             }
           >
-            Today's Scans
+            All Scans
           </Text>
 
           <Text
@@ -490,9 +587,7 @@ export default function RecentScansScreen() {
           </Text>
         </View>
 
-        {/* ============================================= */}
         {/* LOADING */}
-        {/* ============================================= */}
 
         {loading && (
           <View
@@ -516,9 +611,7 @@ export default function RecentScansScreen() {
           </View>
         )}
 
-        {/* ============================================= */}
         {/* ERROR */}
-        {/* ============================================= */}
 
         {!loading &&
           errorMessage !== '' && (
@@ -564,7 +657,6 @@ export default function RecentScansScreen() {
                 }
                 onPress={() => {
                   setLoading(true);
-
                   fetchScans();
                 }}
               >
@@ -579,14 +671,11 @@ export default function RecentScansScreen() {
             </View>
           )}
 
-        {/* ============================================= */}
         {/* EMPTY STATE */}
-        {/* ============================================= */}
 
         {!loading &&
           !errorMessage &&
-          scans.length ===
-            0 && (
+          scans.length === 0 && (
             <View
               style={
                 styles.emptyCard
@@ -654,14 +743,11 @@ export default function RecentScansScreen() {
             </View>
           )}
 
-        {/* ============================================= */}
         {/* SCAN LIST */}
-        {/* ============================================= */}
 
         {!loading &&
           !errorMessage &&
-          scans.length >
-            0 && (
+          scans.length > 0 && (
             <View
               style={
                 styles.scanList
@@ -681,6 +767,10 @@ export default function RecentScansScreen() {
                     isAlreadyUsed(
                       scan.scan_result,
                     );
+
+                  const reviewed =
+                    scan.notes ===
+                    'Reviewed by conductor';
 
                   return (
                     <View
@@ -756,10 +846,62 @@ export default function RecentScansScreen() {
                               styles.duplicateText
                             }
                           >
-                            Duplicate
-                            scan
+                            Duplicate scan
                           </Text>
                         )}
+
+                        <View
+                          style={
+                            styles.crudActions
+                          }
+                        >
+                          <Pressable
+                            style={
+                              styles.updateButton
+                            }
+                            disabled={
+                              reviewed
+                            }
+                            onPress={() => {
+                              if (
+                                !reviewed
+                              ) {
+                                handleMarkReviewed(
+                                  scan.id,
+                                );
+                              }
+                            }}
+                          >
+                            <Text
+                              style={
+                                styles.crudButtonText
+                              }
+                            >
+                              {reviewed
+                                ? '✓ Reviewed'
+                                : 'Mark Reviewed'}
+                            </Text>
+                          </Pressable>
+
+                          <Pressable
+                            style={
+                              styles.deleteButton
+                            }
+                            onPress={() =>
+                              handleDeleteScan(
+                                scan.id,
+                              )
+                            }
+                          >
+                            <Text
+                              style={
+                                styles.crudButtonText
+                              }
+                            >
+                              Delete
+                            </Text>
+                          </Pressable>
+                        </View>
                       </View>
 
                       <View
@@ -792,9 +934,7 @@ export default function RecentScansScreen() {
             </View>
           )}
 
-        {/* ============================================= */}
         {/* ACTIONS */}
-        {/* ============================================= */}
 
         <Pressable
           style={
@@ -871,10 +1011,6 @@ const styles =
       paddingBottom: 40,
     },
 
-    // ==================================================
-    // HEADER
-    // ==================================================
-
     header: {
       flexDirection: 'row',
       justifyContent:
@@ -917,10 +1053,6 @@ const styles =
       color: '#FFFFFF',
       fontSize: 24,
     },
-
-    // ==================================================
-    // STATS
-    // ==================================================
 
     statsCard: {
       backgroundColor:
@@ -976,10 +1108,6 @@ const styles =
         '#E1E6EA',
     },
 
-    // ==================================================
-    // SECTION
-    // ==================================================
-
     sectionHeader: {
       flexDirection: 'row',
       justifyContent:
@@ -999,10 +1127,6 @@ const styles =
       color: '#7B858C',
     },
 
-    // ==================================================
-    // LOADING
-    // ==================================================
-
     loadingCard: {
       backgroundColor:
         '#FFFFFF',
@@ -1018,10 +1142,6 @@ const styles =
       color: '#71808A',
       fontSize: 14,
     },
-
-    // ==================================================
-    // ERROR
-    // ==================================================
 
     errorCard: {
       backgroundColor:
@@ -1078,10 +1198,6 @@ const styles =
       fontWeight: '800',
       fontSize: 13,
     },
-
-    // ==================================================
-    // EMPTY
-    // ==================================================
 
     emptyCard: {
       backgroundColor:
@@ -1158,10 +1274,6 @@ const styles =
       fontSize: 15,
       fontWeight: '800',
     },
-
-    // ==================================================
-    // LIST
-    // ==================================================
 
     scanList: {
       gap: 10,
@@ -1243,6 +1355,41 @@ const styles =
       fontWeight: '600',
     },
 
+    reviewedText: {
+      fontSize: 11,
+      color: '#087F80',
+      marginTop: 4,
+      fontWeight: '700',
+    },
+
+    crudActions: {
+      flexDirection: 'row',
+      marginTop: 8,
+      gap: 6,
+    },
+
+    updateButton: {
+      backgroundColor:
+        '#087F80',
+      borderRadius: 7,
+      paddingVertical: 6,
+      paddingHorizontal: 9,
+    },
+
+    deleteButton: {
+      backgroundColor:
+        '#D33A3A',
+      borderRadius: 7,
+      paddingVertical: 6,
+      paddingHorizontal: 9,
+    },
+
+    crudButtonText: {
+      color: '#FFFFFF',
+      fontSize: 10,
+      fontWeight: '700',
+    },
+
     statusBadge: {
       borderRadius: 8,
       paddingHorizontal: 8,
@@ -1273,10 +1420,6 @@ const styles =
     failedStatus: {
       color: '#D33A3A',
     },
-
-    // ==================================================
-    // ACTIONS
-    // ==================================================
 
     scanAnotherButton: {
       marginTop: 20,
